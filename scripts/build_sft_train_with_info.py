@@ -2,9 +2,17 @@
 """
 scripts/build_sft_train_with_info.py
 
-Generates:
- 1) data_processed/sft_train.jsonl   – 25 diverse SFT examples for LoRA fine-tuning
- 2) data_processed/dataset_info.json – dataset metadata for LLaMA-Factory to load
+1) Creates data_processed/sft_train.jsonl in ShareGPT style:
+     {
+       "messages": [
+         {"role":"system",    "content": "..."},
+         {"role":"user",      "content": "..."},
+         {"role":"assistant", "content": "..."}
+       ]
+     }
+
+2) Creates data_processed/dataset_info.json so that LLaMA-Factory will
+   treat sft_train.jsonl as a "sharegpt" dataset under template "llama3".
 
 Usage:
   python scripts/build_sft_train_with_info.py
@@ -13,25 +21,25 @@ Usage:
 import json
 import pathlib
 
-# 1) Ensure output directory exists
+# 1) Ensure data_processed/ exists
 OUT_DIR = pathlib.Path("data_processed")
 OUT_DIR.mkdir(exist_ok=True, parents=True)
 
-# 2) Paths for the two files
-SFT_FILE = OUT_DIR / "sft_train.jsonl"
+# Paths for output files
+SFT_FILE     = OUT_DIR / "sft_train.jsonl"
 DATASET_INFO = OUT_DIR / "dataset_info.json"
 
-# 3) Instruction template
-INST = (
-    "You are an expert startup advisor. Evaluate the following summary "
-    "and suggest concrete improvements."
-)
+# The same system prompt for every example:
+SYSTEM_PROMPT = "You are an expert startup advisor."
 
-# 4) List of 25 diverse examples (已经包含 24 个，加上下面新增的第 25 个 **PropTech** 示例)
-examples = [
+# “Instruction” frame:
+INSTRUCTION_PROMPT = "Evaluate the following summary and suggest concrete improvements."
+
+# 2) Here are 25 diverse industry examples (instruction, input, output)
+examples_alpaca = [
     # 1. SaaS / Marketing
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our SaaS platform aggregates social-media mentions of small retailers "
             "in real time, offering sentiment analysis and competitor benchmarks."
@@ -47,7 +55,7 @@ examples = [
     },
     # 2. Consumer App / Food Waste
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We built a mobile app that scans grocery receipts, tracks household food "
             "waste, and recommends recipes based on leftovers."
@@ -61,7 +69,7 @@ examples = [
     },
     # 3. Hardware / Robotics
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We manufacture a LiDAR-based robotic lawn mower that learns garden layouts "
             "over time, so homeowners can set it and forget it."
@@ -77,7 +85,7 @@ examples = [
     },
     # 4. Telehealth
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We’re launching a telehealth platform that combines wearable vitals with "
             "doctor video calls for chronic-care monitoring."
@@ -91,7 +99,7 @@ examples = [
     },
     # 5. Marketplace / Freelance
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our marketplace matches freelance graphic designers with SMEs using an "
             "AI ranking algorithm."
@@ -108,7 +116,7 @@ examples = [
     },
     # 6. Retail CV
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We use computer vision to scan retail shelves and trigger restock alerts."
         ),
@@ -122,7 +130,7 @@ examples = [
     },
     # 7. Blockchain / Supply Chain
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our blockchain platform tracks perishable-goods provenance and reduces spoilage."
         ),
@@ -136,7 +144,7 @@ examples = [
     },
     # 8. EdTech
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our adaptive math-tutoring app gamifies exercises and gives real-time hints."
         ),
@@ -149,7 +157,7 @@ examples = [
     },
     # 9. FinTech
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our ML underwriting engine approves SMB loans in minutes by analyzing real-time "
             "cash-flow data."
@@ -165,7 +173,7 @@ examples = [
     },
     # 10. Health Wearable
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our wearable detects atrial fibrillation in real time and alerts cardiologists."
         ),
@@ -178,7 +186,7 @@ examples = [
     },
     # 11. CleanTech IoT
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We deploy low-cost air-quality sensors in cities and sell real-time AQI data "
             "to residents."
@@ -192,7 +200,7 @@ examples = [
     },
     # 12. LegalTech
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our NLP tool flags risky clauses in contracts and suggests edits."
         ),
@@ -205,7 +213,7 @@ examples = [
     },
     # 13. AgriTech Drones
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our drones capture aerial imagery to detect crop diseases early."
         ),
@@ -219,7 +227,7 @@ examples = [
     },
     # 14. AR / Real Estate
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our AR app stages virtual furniture in empty homes to boost real-estate sales."
         ),
@@ -232,7 +240,7 @@ examples = [
     },
     # 15. eSports Coaching
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our cloud platform offers amateur gamers live coaching from pro players plus AI performance analytics."
         ),
@@ -245,7 +253,7 @@ examples = [
     },
     # 16. TravelTech NLP
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our app generates multi-country itineraries in seconds using NLP."
         ),
@@ -258,7 +266,7 @@ examples = [
     },
     # 17. MentalHealthTech
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our AI chatbot delivers CBT techniques for mild anxiety with option to escalate to human therapists."
         ),
@@ -271,7 +279,7 @@ examples = [
     },
     # 18. Sustainability Marketplace
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our marketplace lets neighbors trade surplus homegrown produce using a credit system."
         ),
@@ -284,7 +292,7 @@ examples = [
     },
     # 19. HRTech
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our AI ranks job applicants for recruiters based on CV skill match and cultural fit."
         ),
@@ -297,7 +305,7 @@ examples = [
     },
     # 20. Biotech
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We use CRISPR-based liquid biopsy to detect early-stage pancreatic cancer "
             "from a 5 ml blood sample."
@@ -312,7 +320,7 @@ examples = [
     },
     # 21. Quantum Computing
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our cloud platform offers access to a 1 K-qubit neutral-atom quantum computer "
             "via Python SDK."
@@ -327,7 +335,7 @@ examples = [
     },
     # 22. GovTech / Smart City SaaS
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We provide a SaaS digital-twin of municipal traffic networks to help city "
             "planners optimize signal timing and reduce congestion."
@@ -341,7 +349,7 @@ examples = [
     },
     # 23. Social Enterprise / Off-Grid Solar
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our non-profit startup distributes low-cost solar lanterns to off-grid "
             "communities and funds the program through carbon-offset credits."
@@ -356,7 +364,7 @@ examples = [
     },
     # 24. Web3 / GameFi
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our GameFi project rewards players with tradable tokens for completing quests "
             "in a fantasy MMORPG."
@@ -370,44 +378,58 @@ examples = [
             "daily turnover."
         )
     },
-    # 25. PropTech / AI-Based Property Valuation (新增示例)
+    # 25. PropTech / AI-Based Property Valuation (the missing 25th example)
     {
-        "instruction": INST,
+        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our PropTech startup uses an AI model to automatically value residential properties "
             "based on MLS data, local comparables, and real-time market trends."
         ),
         "output": (
             "1. Validate model accuracy: compare AI valuations to closing prices in 5 major metros; "
-            "publish Mean Absolute Error (MAE) ≤ \$5,000.\n"
+            "publish Mean Absolute Error (MAE) ≤ $5,000.\n"
             "2. Explain data sources: which MLS feeds and third-party APIs (Zillow, Redfin) are used, "
             "and how often are they updated?\n"
             "3. Address regulatory/underwriting compliance: outline how your model meets Appraisal "
             "Foundation (USPAP) standards for automated valuations.\n"
             "4. Secure partnerships with real estate brokerages: integrate with their CRM to provide "
             "instant comps on listing pages.\n"
-            "5. Discuss monetization: charge per valuation API call (\$1/call) or offer monthly subscriptions "
-            "for brokerages at \$499/mo."
+            "5. Discuss monetization: charge per valuation API call ($1/call) or offer monthly subscriptions "
+            "for brokerages at $499/mo."
         )
     },
 ]
 
-# 5) Write sft_train.jsonl
+# 3) Transform each Alpaca triple into a “ShareGPT”-style chat message:
+#
+#    {
+#      "messages": [
+#        {"role":"system","content": SYSTEM_PROMPT},
+#        {"role":"user",  "content": "<instruction>\n\n<input>"},
+#        {"role":"assistant","content": "<output>"}
+#      ]
+#    }
 with open(SFT_FILE, "w", encoding="utf-8") as fp:
-    for ex in examples:
-        fp.write(json.dumps(ex, ensure_ascii=False) + "\n")
+    for ex in examples_alpaca:
+        user_content = f"{ex['instruction']}\n\n{ex['input']}"
+        chat_example = {
+            "messages": [
+                {"role": "system",    "content": SYSTEM_PROMPT},
+                {"role": "user",      "content": user_content},
+                {"role": "assistant", "content": ex["output"]}
+            ]
+        }
+        fp.write(json.dumps(chat_example, ensure_ascii=False) + "\n")
 
-print(f"✅ Wrote {len(examples)} examples to {SFT_FILE}")
+print(f"✅ Wrote {len(examples_alpaca)} ShareGPT‐style examples to {SFT_FILE}")
 
-# 6) Create dataset_info.json
+# 4) Create dataset_info.json for “sharegpt” format and template “llama3”
 dataset_info = {
     "sft_train": {
         "file_name": SFT_FILE.name,
-        "format": "alpaca",
+        "format": "sharegpt",
         "columns": {
-            "instruction": "instruction",
-            "input": "input",
-            "output": "output"
+            "messages": "messages"
         }
     }
 }
@@ -415,4 +437,4 @@ dataset_info = {
 with open(DATASET_INFO, "w", encoding="utf-8") as fp:
     json.dump(dataset_info, fp, ensure_ascii=False, indent=2)
 
-print(f"✅ Created dataset metadata at {DATASET_INFO}")
+print(f"✅ Created dataset_info.json at {DATASET_INFO}")
