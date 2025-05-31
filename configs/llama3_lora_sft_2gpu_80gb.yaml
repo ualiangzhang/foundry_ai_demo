@@ -34,7 +34,7 @@ report_to: none                 # No external logging service.
 # With 80 GB per GPU, we can push batch sizes higher:
 per_device_train_batch_size: 16  # Each GPU handles 16 examples → total 32 per step
 gradient_accumulation_steps: 2   # Effective global batch = 32 × 2 = 64
-learning_rate: 2e-4
+learning_rate: 0.0002
 num_train_epochs: 5.0            # More epochs to fully leverage small dataset
 lr_scheduler_type: cosine
 warmup_ratio: 0.1
