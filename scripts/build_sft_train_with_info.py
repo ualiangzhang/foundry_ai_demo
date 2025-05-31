@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/build_sft_train_with_info.py
+scripts/build_sft_train_llama3_sharegpt.py
 
 1) Creates data_processed/sft_train.jsonl in ShareGPT style:
      {
@@ -15,7 +15,7 @@ scripts/build_sft_train_with_info.py
    treat sft_train.jsonl as a "sharegpt" dataset under template "llama3".
 
 Usage:
-  python scripts/build_sft_train_with_info.py
+  python scripts/build_sft_train_llama3_sharegpt.py
 """
 
 import json
@@ -426,10 +426,17 @@ print(f"✅ Wrote {len(examples_alpaca)} ShareGPT‐style examples to {SFT_FILE}
 # 4) Create dataset_info.json for “sharegpt” format and template “llama3”
 dataset_info = {
     "sft_train": {
-        "file_name": SFT_FILE.name,
-        "format": "sharegpt",
+        "file_name": "sft_train.jsonl",
+        "formatting": "sharegpt",
         "columns": {
             "messages": "messages"
+        },
+        "tags": {
+            "role_tag": "role",
+            "content_tag": "content",
+            "user_tag": "user",
+            "assistant_tag": "assistant",
+            "system_tag": "system"
         }
     }
 }
