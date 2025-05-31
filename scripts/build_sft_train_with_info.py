@@ -1,35 +1,62 @@
 #!/usr/bin/env python3
 """
-Create a tiny ShareGPT-style SFT set for Llama-3 fine-tuning.
+scripts/build_stf_train_with_info.py
 
-Outputs
--------
-data_processed/sft_train.jsonl
-data_processed/dataset_info.json
+This script creates a small ShareGPT-style supervised fine-tuning (SFT) dataset
+for LLaMA-3 based on positive and negative examples of startup feedback.
+
+It outputs:
+    - data_processed/sft_train.jsonl : Each line is a JSON with "messages" containing
+      a system prompt, user prompt (including context), and assistant output.
+    - data_processed/dataset_info.json : JSON metadata describing the SFT dataset.
+
+Usage:
+    python scripts/build_stf_train_with_info.py
+
+Ensure:
+    - The 'data_processed' directory exists or can be created by this script.
+    - The POSITIVE and NEGATIVE example lists are defined within the script.
+
+Logging:
+    The script logs progress and errors to stdout. Check logs for any issues.
+
+Example:
+    mkdir -p data_processed
+    python scripts/build_stf_train_with_info.py
 """
 
 import json
+import logging
 import pathlib
+from typing import Dict, List
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────── paths ─────────────────────────────────────────────
-OUT_DIR = pathlib.Path("data_processed")
+OUT_DIR: pathlib.Path = pathlib.Path("data_processed")
 OUT_DIR.mkdir(exist_ok=True, parents=True)
 
-SFT_FILE     = OUT_DIR / "sft_train.jsonl"
-DATASET_INFO = OUT_DIR / "dataset_info.json"
+SFT_FILE: pathlib.Path = OUT_DIR / "sft_train.jsonl"
+DATASET_INFO: pathlib.Path = OUT_DIR / "dataset_info.json"
 
 # ─────────────────────────── Prompt templates ───────────────────────────────────
-SYSTEM_PROMPT = (
+SYSTEM_PROMPT: str = (
     "You are a veteran VC partner. Using ONLY the reference snippets, "
     "produce exactly FOUR numbered recommendations covering market, "
     "product, business model and team. Each bullet ≤ 50 words, no questions. "
     "If the snippets are empty, reply exactly `INSUFFICIENT_CONTEXT`."
 )
-USER_PREFIX = "### Startup summary\n"
-CTX_PREFIX  = "\n\n### Reference snippets\n"
+USER_PREFIX: str = "### Startup summary\n"
+CTX_PREFIX: str = "\n\n### Reference snippets\n"
 
 # ─────────────────────────── Positive examples (25) ─────────────────────────────
-POSITIVE = [
+POSITIVE: List[Dict[str, str]] = [
     {
         "input": (
             "Our SaaS platform aggregates social-media mentions of small retailers "
@@ -316,8 +343,8 @@ POSITIVE = [
     },
 ]
 
-# ───────────────────────── Negative “no-context” examples (3) ─────────────────
-NEGATIVE = [
+# ────────────────────────── Negative “no-context” examples ────────────────────────
+NEGATIVE: List[Dict[str, str]] = [
     {
         "input": "We design algae-based protein bars for endurance athletes.",
         "context": "",
@@ -335,39 +362,109 @@ NEGATIVE = [
     },
 ]
 
-# ──────────────────────── helper to convert to ShareGPT format ─────────────────
-def to_conversation(ex):
-    user_msg = USER_PREFIX + ex["input"] + CTX_PREFIX + ex["context"]
+
+# ───────────────────────── helper to convert to ShareGPT format ─────────────────
+def to_conversation(ex: Dict[str, str]) -> Dict[str, List[Dict[str, str]]]:
+    """Convert a single example into ShareGPT-style conversation format.
+
+    Args:
+        ex: A dictionary containing "input", "context", and "output" keys.
+
+    Returns:
+        A dictionary with a "messages" list containing three message objects:
+        - system message with SYSTEM_PROMPT
+        - user message combining USER_PREFIX, input, CTX_PREFIX, and context
+        - assistant message with the expected output
+    """
+    user_msg: str = USER_PREFIX + ex["input"] + CTX_PREFIX + ex["context"]
     return {
         "messages": [
-            {"role": "system",    "content": SYSTEM_PROMPT},
-            {"role": "user",      "content": user_msg},
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_msg},
             {"role": "assistant", "content": ex["output"]}
         ]
     }
 
+
 # ───────────────────────── Write SFT JSONL ─────────────────────────────────────
-all_rows = POSITIVE + NEGATIVE
-with SFT_FILE.open("w", encoding="utf-8") as fp:
-    for row in all_rows:
-        fp.write(json.dumps(to_conversation(row), ensure_ascii=False) + "\n")
-print(f"✅  Wrote {len(all_rows)} examples → {SFT_FILE}")
+def write_sft_file(file_path: pathlib.Path, examples: List[Dict[str, str]]) -> int:
+    """Write the provided positive and negative examples to a JSONL file.
+
+    Args:
+        file_path: Path to the output JSONL file.
+        examples: List of example dictionaries with "input", "context", "output".
+
+    Returns:
+        The total number of examples written.
+
+    Raises:
+        IOError: If writing to the file fails.
+    """
+    count: int = 0
+    try:
+        with file_path.open("w", encoding="utf-8") as fp:
+            for ex in examples:
+                conv_obj = to_conversation(ex)
+                fp.write(json.dumps(conv_obj, ensure_ascii=False) + "\n")
+                count += 1
+        logger.info(f"✅  Wrote {count} examples → {file_path}")
+        return count
+    except (OSError, IOError) as e:
+        logger.error(f"Failed to write SFT file '{file_path}': {e}")
+        raise
+
 
 # ───────────────────────── Write dataset_info.json ────────────────────────────
-info = {
-    "sft_train": {
-        "file_name": SFT_FILE.name,
-        "formatting": "sharegpt",
-        "columns": {"messages": "messages"},
-        "tags": {
-            "role_tag":      "role",
-            "content_tag":   "content",
-            "user_tag":      "user",
-            "assistant_tag": "assistant",
-            "system_tag":    "system"
+def write_dataset_info(file_path: pathlib.Path, info: Dict) -> None:
+    """Write the dataset metadata to a JSON file.
+
+    Args:
+        file_path: Path to the output dataset_info.json file.
+        info: Dictionary containing dataset metadata.
+
+    Raises:
+        IOError: If writing to the file fails.
+    """
+    try:
+        with file_path.open("w", encoding="utf-8") as fp:
+            json.dump(info, fp, indent=2, ensure_ascii=False)
+        logger.info(f"✅  Created {file_path}")
+    except (OSError, IOError) as e:
+        logger.error(f"Failed to write dataset info file '{file_path}': {e}")
+        raise
+
+
+def main() -> None:
+    """Main entry point for building the SFT dataset and metadata."""
+    all_rows: List[Dict[str, str]] = POSITIVE + NEGATIVE
+
+    # Write SFT training file
+    examples_written: int = write_sft_file(SFT_FILE, all_rows)
+
+    # Prepare dataset info metadata
+    info: Dict = {
+        "sft_train": {
+            "file_name": SFT_FILE.name,
+            "formatting": "sharegpt",
+            "columns": {"messages": "messages"},
+            "tags": {
+                "role_tag": "role",
+                "content_tag": "content",
+                "user_tag": "user",
+                "assistant_tag": "assistant",
+                "system_tag": "system"
+            }
         }
     }
-}
-with DATASET_INFO.open("w", encoding="utf-8") as fp:
-    json.dump(info, fp, indent=2, ensure_ascii=False)
-print(f"✅  Created {DATASET_INFO}")
+
+    # Write dataset_info.json
+    write_dataset_info(DATASET_INFO, info)
+
+    logger.info(f"Process completed: {examples_written} examples and metadata written.")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        logger.error(f"Unhandled exception in main: {e}")
