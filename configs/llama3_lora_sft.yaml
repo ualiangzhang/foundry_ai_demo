@@ -1,14 +1,36 @@
+# ─── llama3_lora_sft_h100.yaml ─────────────────────────────────────────────
+
 model_name_or_path: ./models/base/Meta-Llama-3-8B-Instruct
+
 dataset_dir: ./data_processed
-dataset: [sft_train]               # will look for sft_train.jsonl
+dataset: [sft_train]          # assumes "sft_train.jsonl" or combined
+
+# Use pure FP16 (no 4-bit) on H100 to maximize numeric fidelity.
 finetuning_type: lora
-quantization_bit: 16                # QLoRA – keeps VRAM low
+quantization_bit: 16         # ← 16-bit FP16 instead of 4-bit
+
 output_dir: ./models/adapters/llama3_lora
-per_device_train_batch_size: 4
-gradient_accumulation_steps: 8
+
+# H100 can hold a much larger batch. If each sequence is ~512 tokens:
+per_device_train_batch_size: 16
+
+# If you want an “effective batch” of ~32–64, you can still use:
+gradient_accumulation_steps: 1  # no accumulation (logical batch = 16)
+# Or if you really want 64 logical, do 16 × 4:
+# gradient_accumulation_steps: 4
+
 num_train_epochs: 3
-learning_rate: 2e-4
-flash_attn: auto
-save_steps: 100
+
+learning_rate: 2e-4           # keep the same base LR or slightly increase to 3e-4
+
+# LoRA-specific settings
 lora_rank: 64
-report_to: none                    # turn off W&B if you like
+lora_alpha: 32                # a common default, you can keep or bump if desired
+
+save_steps: 100               # save checkpoints every 100 steps
+logging_steps: 20
+
+# Use FlashAttention if you have it installed; H100 loves it.
+flash_attn: true
+
+report_to: none
