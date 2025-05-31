@@ -1,6 +1,7 @@
 # src/rag/retriever.py
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma, Qdrant
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_community.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 
 EMB_NAME = "BAAI/bge-base-en-v1.5"
