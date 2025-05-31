@@ -1,6 +1,6 @@
 ############################################################
-# LLaMA-Factory config – 2 × H100 (80 GB each)
-# Small, high-quality SFT set → conservative LoRA
+# Updated LLaMA-Factory config – 2 × H100 (80 GB each)
+# Tiny SFT set: disable automatic HuggingFace eval (to avoid NaN)
 ############################################################
 
 ### ───────── Model Settings ─────────
@@ -11,22 +11,23 @@ trust_remote_code: true
 stage: sft
 do_train: true
 finetuning_type: lora
-lora_rank: 16          # smaller rank = less over-fitting on 28 lines
+lora_rank: 16          # small rank avoids overfitting on ~28 examples
 lora_alpha: 32
 lora_dropout: 0.05
 lora_target: all
-flash_attn: auto       # H100 has native Flash-Attention
+flash_attn: auto       # use FlashAttention on H100 if available
 
 ### ───────── Dataset Settings ───────
 dataset_dir: ./data_processed
 dataset: sft_train
 template: llama3
 cutoff_len: 2048
-val_size: 0.1
+# We disable HuggingFace's built-in evaluation: set val_size = 0
+val_size: 0.0
 overwrite_cache: true
 preprocessing_num_workers: 8
 dataloader_num_workers: 4
-max_samples: 1000      # harmless upper bound
+max_samples: 1000
 
 ### ───────── Output Settings ────────
 output_dir: ./models/adapters/llama3_lora
@@ -38,9 +39,9 @@ save_only_model: false
 report_to: none
 
 ### ───────── Training Settings ──────
-per_device_train_batch_size: 8
-gradient_accumulation_steps: 4      # effective batch   = 32
-learning_rate: 0.0001
+per_device_train_batch_size: 8       # Because we have two H100s, each sees 8 → global batch 16
+gradient_accumulation_steps: 4       # effective global batch size = 16 × 4 = 64
+learning_rate: 0.0002
 weight_decay: 0.01
 num_train_epochs: 3
 lr_scheduler_type: cosine
@@ -50,6 +51,7 @@ ddp_find_unused_parameters: false
 ddp_timeout: 180000
 
 ### ───────── Evaluation Settings ────
-eval_strategy: steps
-eval_steps: 200
-per_device_eval_batch_size: 4
+# Disabled to avoid NaN on tiny set
+# eval_strategy: steps
+# eval_steps: 200
+# per_device_eval_batch_size: 4
