@@ -11,9 +11,9 @@ trust_remote_code: true                                       # Allow model code
 stage: sft                                                    # Indicates we are performing supervised fine-tuning
 do_train: true                                                # Enable training phase
 finetuning_type: lora                                         # Use LoRA (Low-Rank Adaptation) for parameter-efficient fine-tuning
-lora_rank: 16                                                 # LoRA rank; smaller rank helps avoid overfitting on a small dataset (~28 examples)
+lora_rank: 8                                                 # LoRA rank; smaller rank helps avoid overfitting on a small dataset (~28 examples)
 lora_alpha: 32                                                # LoRA scaling factor (alpha); higher alpha can improve stability
-lora_dropout: 0.05                                            # Dropout probability for LoRA layers to regularize fine-tuning
+lora_dropout: 0.1                                            # Dropout probability for LoRA layers to regularize fine-tuning
 lora_target: all                                              # Apply LoRA to all Linear layers in the model
 flash_attn: auto                                              # Automatically use FlashAttention if available on H100 GPUs
 
@@ -38,11 +38,11 @@ save_only_model: false                                         # Save optimizer 
 report_to: none                                                # Disable reporting to any external service (e.g., WandB, TensorBoard)
 
 ### ───────── Training Settings ──────
-per_device_train_batch_size: 4                                  # Batch size per GPU (2 × H100 → total GPUs = 2, so global batch = 2 × 2 = 4)
-gradient_accumulation_steps: 1                                 # Accumulate gradients over 1 step → effective global batch = 4 × 1 = 4
-learning_rate: 0.0001                                           # Initial learning rate for optimizer
+per_device_train_batch_size: 2                                  # Batch size per GPU (2 × H100 → total GPUs = 2, so global batch = 2 × 2 = 4)
+gradient_accumulation_steps: 1                                 # Accumulate gradients over 1 step → effective global batch = 2 × 1 = 2
+learning_rate: 0.00005                                           # Initial learning rate for optimizer
 weight_decay: 0.01                                              # L2 weight decay to regularize fine-tuning
-num_train_epochs: 3                                             # Number of full passes over the dataset
+num_train_epochs: 5                                             # Number of full passes over the dataset
 lr_scheduler_type: cosine                                       # Cosine learning rate scheduling
 warmup_ratio: 0.01                                               # Warmup fraction (10% of total training steps used to gradually increase LR)
 bf16: true                                                      # Use bfloat16 mixed precision on H100 for faster training and reduced memory
