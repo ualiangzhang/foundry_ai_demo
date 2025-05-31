@@ -1,0 +1,14 @@
+model_name_or_path: ./models/base/Meta-Llama-3-8B-Instruct
+dataset_dir: ./data_processed
+dataset: [sft_train]               # will look for sft_train.jsonl
+finetuning_type: lora
+quantization_bit: 4                # QLoRA – keeps VRAM low
+output_dir: ./models/adapters/llama3_lora
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 8
+num_train_epochs: 3
+learning_rate: 2e-4
+flash_attn: auto
+save_steps: 100
+lora_rank: 64
+report_to: none                    # turn off W&B if you like
