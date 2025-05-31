@@ -1,447 +1,373 @@
 #!/usr/bin/env python3
 """
-scripts/build_sft_train_llama3_sharegpt.py
+Create a tiny ShareGPT-style SFT set for Llama-3 fine-tuning.
 
-1) Creates data_processed/sft_train.jsonl in ShareGPT style:
-     {
-       "messages": [
-         {"role":"system",    "content": "..."},
-         {"role":"user",      "content": "..."},
-         {"role":"assistant", "content": "..."}
-       ]
-     }
-
-2) Creates data_processed/dataset_info.json so that LLaMA-Factory will
-   treat sft_train.jsonl as a "sharegpt" dataset under template "llama3".
-
-Usage:
-  python scripts/build_sft_train_llama3_sharegpt.py
+Outputs
+-------
+data_processed/sft_train.jsonl
+data_processed/dataset_info.json
 """
 
 import json
 import pathlib
 
-# 1) Ensure data_processed/ exists
+# ─────────────────────────── paths ─────────────────────────────────────────────
 OUT_DIR = pathlib.Path("data_processed")
 OUT_DIR.mkdir(exist_ok=True, parents=True)
 
-# Paths for output files
 SFT_FILE     = OUT_DIR / "sft_train.jsonl"
 DATASET_INFO = OUT_DIR / "dataset_info.json"
 
-# The same system prompt for every example:
-SYSTEM_PROMPT = "You are an expert startup advisor."
+# ─────────────────────────── Prompt templates ───────────────────────────────────
+SYSTEM_PROMPT = (
+    "You are a veteran VC partner. Using ONLY the reference snippets, "
+    "produce exactly FOUR numbered recommendations covering market, "
+    "product, business model and team. Each bullet ≤ 50 words, no questions. "
+    "If the snippets are empty, reply exactly `INSUFFICIENT_CONTEXT`."
+)
+USER_PREFIX = "### Startup summary\n"
+CTX_PREFIX  = "\n\n### Reference snippets\n"
 
-# “Instruction” frame:
-INSTRUCTION_PROMPT = "Evaluate the following summary and suggest concrete improvements."
-
-# 2) Here are 25 diverse industry examples (instruction, input, output)
-examples_alpaca = [
-    # 1. SaaS / Marketing
+# ─────────────────────────── Positive examples (25) ─────────────────────────────
+POSITIVE = [
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our SaaS platform aggregates social-media mentions of small retailers "
             "in real time, offering sentiment analysis and competitor benchmarks."
         ),
+        "context": "Social sentiment tools adoption among SMB retailers grew 37 % YoY (Gartner 2024).",
         "output": (
-            "1. Narrow ICP: are you serving brick-and-mortar boutiques or e-commerce shops? "
-            "A focused niche lowers CAC.\n"
-            "2. Differentiate vs. free tools: highlight unique ML features (e.g., hyper-local "
-            "sentiment heatmaps).\n"
-            "3. Publish model benchmarks (F1 ≥ 0.88 on retail sentiment) to build trust.\n"
-            "4. Add ROI calculator—show how a 5-point sentiment boost drives revenue."
+            "1. **Market** – Focus on brick-and-mortar boutiques first; the 37 % YoY uptake (Gartner) shows unmet demand.\n"
+            "2. **Product** – Ship hyper-local heat-map widget; differentiates vs. Hootsuite (<CTX1>).\n"
+            "3. **Biz model** – Bundle a $99/mo ROI dashboard; highlight how 5-pt sentiment lift → +8 % sales.\n"
+            "4. **Team** – Hire a retail data-partnership lead to secure POS integrations."
         )
     },
-    # 2. Consumer App / Food Waste
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "We built a mobile app that scans grocery receipts, tracks household food "
             "waste, and recommends recipes based on leftovers."
         ),
+        "context": "USDA estimates $1,500/yr of edible food wasted per household (2023).",
         "output": (
-            "1. Quantify TAM: 36 M U.S. households waste $1,500/yr in food—cite USDA stats.\n"
-            "2. Release OCR accuracy numbers (≥ 98 % on mixed fonts) vs. Google Vision.\n"
-            "3. Integrate retailer loyalty APIs to auto-import purchase data—reduces friction.\n"
-            "4. Experiment with affiliate links to grocery delivery for monetization."
+            "1. **Market** – $48 B addressable (32 M HH × $1.5 k waste).\n"
+            "2. **Product** – Publish OCR accuracy ≥ 98 % on mixed fonts to trump Google Vision.\n"
+            "3. **Biz model** – Affiliate links to Instacart: $2 ARPU/mo realistic.\n"
+            "4. **Team** – Bring on a Registered Dietitian for regulatory trust."
         )
     },
-    # 3. Hardware / Robotics
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "We manufacture a LiDAR-based robotic lawn mower that learns garden layouts "
-            "over time, so homeowners can set it and forget it."
+            "We manufacture a LiDAR-based robotic lawn mower that learns garden layouts."
         ),
+        "context": "Robotic mower TAM projected $4.3 B by 2028 (Allied MR 2023).",
         "output": (
-            "1. Publish field-test data: 2 cm positioning error on uneven terrain in rain "
-            "gives you an edge over Husqvarna (5 cm).\n"
-            "2. Add theft-deterrent and OTA software-update plan—reduces warranty cost.\n"
-            "3. Consider a service+subscription model (hardware 40 % margin up-front, "
-            "$20/mo SaaS for zone analytics).\n"
-            "4. Secure UL safety certification before Q4 retail channel push."
+            "1. **Market** – Lead with premium prosumer segment (≥ $1k ASP) inside $4.3 B TAM.\n"
+            "2. **Product** – Publish 2 cm positioning error vs. Husqvarna’s 5 cm to win specs wars.\n"
+            "3. **Biz model** – Add $20/mo SaaS for zone analytics; smooth revenue curve.\n"
+            "4. **Team** – Recruit UL certification veteran before Q4 retail push."
         )
     },
-    # 4. Telehealth
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "We’re launching a telehealth platform that combines wearable vitals with "
-            "doctor video calls for chronic-care monitoring."
+            "We’re launching a telehealth platform combining wearables with doctor video calls."
         ),
+        "context": "Chronic-care telehealth cuts readmissions by 18 % (JAMA 2023).",
         "output": (
-            "1. File HIPAA compliance statement—include AWS BAA references.\n"
-            "2. Pilot with 2 outpatient clinics; track 90-day readmission reduction KPI.\n"
-            "3. Expand device list beyond Apple Watch: partner with Dexcom for glucose.\n"
-            "4. Clarify payer strategy: CPT 99457 reimbursement or direct employer plans?"
+            "1. **Market** – Target CHF + diabetes first; hospitals pay to cut 18 % readmission penalty.\n"
+            "2. **Product** – Integrate Dexcom CGM to broaden chronic cohort.\n"
+            "3. **Biz model** – Bill CPT 99457; show CFOs $3 ROI per $1 spent.\n"
+            "4. **Team** – Add HIPAA compliance officer; speeds payer contracts."
         )
     },
-    # 5. Marketplace / Freelance
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "Our marketplace matches freelance graphic designers with SMEs using an "
-            "AI ranking algorithm."
+            "Our marketplace matches freelance graphic designers with SMEs using an AI ranking algorithm."
         ),
+        "context": "SME design spend hits $27 B globally (IBIS 2024).",
         "output": (
-            "|Dimension|Current|Improvement|\n"
-            "|---|---|---|\n"
-            "|Differentiation|Generic AI score|Include design-style embeddings & past "
-            "NPS data|\n"
-            "|Supply QA|Portfolio only|Add timed skill test and reference checks|\n"
-            "|Pricing|10 % fee|Tiered—5 % for top talent, 15 % for new|\n"
-            "|Retention|None|Introduce project-timeline boards + milestone escrow|"
+            "1. **Market** – Own the $5 B North American slice first; less price compression.\n"
+            "2. **Product** – Train embeddings on style + past NPS to beat generic AI rankers.\n"
+            "3. **Biz model** – Tier fee: 5 % top-talent, 15 % new entrants; increases take while retaining supply.\n"
+            "4. **Team** – Hire community manager to vet portfolios and run timed skill tests."
         )
     },
-    # 6. Retail CV
     {
-        "instruction": INSTRUCTION_PROMPT,
+        "input": "We use computer vision to scan retail shelves and trigger restock alerts.",
+        "context": "Shelf-scanning robots reduce out-of-stock by 25 % in pilot stores (Stanford Retail 2023).",
+        "output": (
+            "1. **Market** – Target grocery chains first; 25 % OOS reduction is a clear ROI.\n"
+            "2. **Product** – Publish recall ≥ 0.95 on 1k SKUs vs. alternatives.\n"
+            "3. **Biz model** – Offer $99/mo per store with SLA-backed uptime.\n"
+            "4. **Team** – Partner with a systems integrator to speed DS integration."
+        )
+    },
+    {
+        "input": "Our blockchain platform tracks perishable-goods provenance and reduces spoilage.",
+        "context": "4 % spoilage drop in 3-month banana pilot saved $120k/yr (Kroger study 2023).",
+        "output": (
+            "1. **Market** – Focus on bananas → pilot proved $120k savings; expand to berries.\n"
+            "2. **Product** – Migrate to Hyperledger Fabric; cut tx cost from $0.30 to <$0.01.\n"
+            "3. **Biz model** – Charge 1 % of spoilage savings; high-margin, usage-based pricing.\n"
+            "4. **Team** – Add supply-chain technologist with retail P&L experience."
+        )
+    },
+    {
+        "input": "Our adaptive math-tutoring app gamifies exercises and gives real-time hints.",
+        "context": "A/B test: +17 % math scores vs. Khan Academy over 6 weeks (EdTech Research 2024).",
+        "output": (
+            "1. **Market** – Target schools first; 17 % lift resonates with district buyers.\n"
+            "2. **Product** – Map to Common Core; include teacher dashboard for class progress.\n"
+            "3. **Biz model** – Freemium: first 3 units free, $6/mo/full access; proven conversion.\n"
+            "4. **Team** – Hire former teacher-administrator to accelerate district sales."
+        )
+    },
+    {
+        "input": "Our ML underwriting engine approves SMB loans in minutes by analyzing real-time cash-flow data.",
+        "context": "SMB loan defaults dropped 20 % vs. FICO-only models (Fed 2023 pilot).",
+        "output": (
+            "1. **Market** – Embed with POS providers (Square has 2M merchants); 20 % default drop is a strong plug.\n"
+            "2. **Product** – Publish ROC AUC ≥ 0.92 vs. FICO 0.74 on 50k loans.\n"
+            "3. **Biz model** – Offer revenue-share with banks: 2 % origination fee, shared risk.\n"
+            "4. **Team** – Hire compliance director to manage KYC/AML oversight."
+        )
+    },
+    {
+        "input": "Our wearable detects atrial fibrillation in real time and alerts cardiologists.",
+        "context": "AFib screening devices have 93 % sensitivity in outpatient trials (Circulation 2023).",
+        "output": (
+            "1. **Market** – Sell direct to cardiology groups; 93 % sensitivity beats AliveCor’s 89 %.\n"
+            "2. **Product** – Embed edge AI chip to reduce battery drain to <3 %/day.\n"
+            "3. **Biz model** – Monitor subscription $99/yr + hardware $149; consensus yields 40 % margin.\n"
+            "4. **Team** – Partner with Mayo Clinic for clinical validation."
+        )
+    },
+    {
         "input": (
-            "We use computer vision to scan retail shelves and trigger restock alerts."
+            "We deploy low-cost air-quality sensors in cities and sell real-time AQI data to residents."
         ),
+        "context": "EPA compliance data shows 15 % under-reporting in city sensors vs. lab monitors.",
         "output": (
-            "1. Edge vs. cloud inference cost comparison—store managers need predictable "
-            "OPEX.\n"
-            "2. Publish confusion-matrix across 1 K SKUs; aim for recall ≥ 0.95.\n"
-            "3. Pre-integrate with Shopify POS and Oracle Netsuite for fast onboarding.\n"
-            "4. Offer pay-per-store pricing ($99/mo) to speed small-chain adoption."
+            "1. **Market** – Target cities with known under-reporting; value proposition clear.\n"
+            "2. **Product** – Calibrate vs. EPA ref monitors: show MAE ≤ 3 µg/m³.\n"
+            "3. **Biz model** – Tiered API: 500 calls free, $0.002/call after; attracts dev ecosystem.\n"
+            "4. **Team** – Hire PhD environmental engineer to oversee calibration."
         )
     },
-    # 7. Blockchain / Supply Chain
     {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our blockchain platform tracks perishable-goods provenance and reduces spoilage."
-        ),
+        "input": "Our NLP tool flags risky clauses in contracts and suggests edits.",
+        "context": "85 % of medium-sized firms lack in-house legal teams (LEXISNEXIS 2023 survey).",
         "output": (
-            "1. Replace proof-of-work chain with permissioned Hyperledger to cut tx cost "
-            "from $0.30 to <$0.01.\n"
-            "2. Show pilot: 4 % spoilage drop in 3-month banana shipment study.\n"
-            "3. Bundle low-cost BLE temp sensors; embed cost into SaaS contract.\n"
-            "4. Offer ESG scoring dashboard—retailers can report CO₂ reduction."
+            "1. **Market** – Target midsize firms (85 % underserved); legal spend $24B/yr.\n"
+            "2. **Product** – Publish Precision 0.93, Recall 0.88 on 100k clauses.\n"
+            "3. **Biz model** – $0.35/page or $99/mo unlimited; aligns with SMB budgets.\n"
+            "4. **Team** – Integrate with DocuSign & Word; hire former GC to navigate adoption."
         )
     },
-    # 8. EdTech
     {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our adaptive math-tutoring app gamifies exercises and gives real-time hints."
-        ),
+        "input": "Our drones capture aerial imagery to detect crop diseases early.",
+        "context": "Early detection can reduce pesticide spend by 18 % (USDA 2022).",
         "output": (
-            "1. Map each level to Common Core IDs; teachers need alignment proof.\n"
-            "2. Publish A/B trial: +17 % test-score improvement over Khan baseline.\n"
-            "3. Add teacher admin console (class progress heat-map) for district sales.\n"
-            "4. Freemium plan: 3 units free, $6/mo for full access—lower paywall friction."
+            "1. **Market** – Target large soybean farms; 18 % cost saving resonates.\n"
+            "2. **Product** – Publish disease-classification F1 ≥ 0.9 across 8 staple crops.\n"
+            "3. **Biz model** – Subscription per acre $2/acre/season; farmers prefer OPEX.\n"
+            "4. **Team** – Partner with pesticide vendors to bundle targeted treatment kits."
         )
     },
-    # 9. FinTech
     {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our ML underwriting engine approves SMB loans in minutes by analyzing real-time "
-            "cash-flow data."
-        ),
+        "input": "Our AR app stages virtual furniture in empty homes to boost real-estate sales.",
+        "context": "Staged homes sell 21 days faster on average (NAR 2023 report).",
         "output": (
-            "1. Show ROC AUC ≥ 0.92 vs. FICO 0.74 on 50 K historical loans.\n"
-            "2. Outline compliance: CRA, ECOA, KYC/AML.\n"
-            "3. Negotiate bank-partnership warehouse line—$50 M tranche covers first "
-            "6 mo originations.\n"
-            "4. Offer revenue-share model to POS providers (Square, Lightspeed) for "
-            "embedded lending."
+            "1. **Market** – Proof: homes sell 21 days faster; pitch to listing agents.\n"
+            "2. **Product** – Add e-commerce links so buyers purchase featured furniture; new revenue stream.\n"
+            "3. **Biz model** – Charge $199 per listing; $99 installation fee.\n"
+            "4. **Team** – Integrate with Matterport scans; hire UX designer for seamless AR UX."
         )
     },
-    # 10. Health Wearable
     {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our wearable detects atrial fibrillation in real time and alerts cardiologists."
-        ),
-        "output": (
-            "1. File FDA 510(k) predicate comparison—AliveCor KardiaMobile as reference.\n"
-            "2. Embed edge AI chip to reduce battery drain to <3 %/day.\n"
-            "3. Co-author clinical paper with Mayo Clinic—boosts credibility with insurers.\n"
-            "4. Monetize via annual monitoring subscription ($99) + device sale ($149)."
-        )
-    },
-    # 11. CleanTech IoT
-    {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "We deploy low-cost air-quality sensors in cities and sell real-time AQI data "
-            "to residents."
-        ),
-        "output": (
-            "1. Calibrate sensors quarterly vs. EPA reference monitors—publish MAE ≤ 3 µg/m³.\n"
-            "2. Offer tiered data API for app developers (500 calls free, $0.002/call thereafter).\n"
-            "3. Partner with insurance firms—use AQI to price respiratory-health premiums.\n"
-            "4. Apply for municipal grants to subsidize sensor rollout."
-        )
-    },
-    # 12. LegalTech
-    {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our NLP tool flags risky clauses in contracts and suggests edits."
-        ),
-        "output": (
-            "1. Train on >100 K annotated clauses; publish precision/recall 0.93/0.88.\n"
-            "2. Add jurisdiction toggles (US/UK/EU) to handle local clause variants.\n"
-            "3. Integrate with DocuSign and Microsoft Word for frictionless workflow.\n"
-            "4. Pricing: $0.35 per contract page or $99/mo unlimited."
-        )
-    },
-    # 13. AgriTech Drones
-    {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our drones capture aerial imagery to detect crop diseases early."
-        ),
-        "output": (
-            "1. Offer subscription per acre ($2/acre/season) instead of hardware sales—"
-            "farmers prefer OPEX.\n"
-            "2. Show disease-classification F1 ≥ 0.9 across 8 staple crops.\n"
-            "3. Partner with pesticide vendors—upsell targeted treatment kits.\n"
-            "4. Provide offline edge-processing for low-connectivity regions."
-        )
-    },
-    # 14. AR / Real Estate
-    {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our AR app stages virtual furniture in empty homes to boost real-estate sales."
-        ),
-        "output": (
-            "1. Publish case study: staged homes sell 21 days faster (n=52 listings).\n"
-            "2. Add e-commerce links so buyers can purchase displayed furniture—extra revenue stream.\n"
-            "3. Provide CAD export for architects—broadens TAM.\n"
-            "4. Bundle with Matterport 3-D scans to reduce onboarding friction."
-        )
-    },
-    # 15. eSports Coaching
-    {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our cloud platform offers amateur gamers live coaching from pro players plus AI performance analytics."
         ),
+        "context": "Median skill lift +200 Elo after 10 sessions (Watson Esports 2024 study).",
         "output": (
-            "1. Segment by game genre—MOBA vs. FPS require different KPIs; tailor dashboards.\n"
-            "2. Publish skill-lift stat: median Elo +200 after 10 sessions.\n"
-            "3. Recruit 50 verified pro coaches via revenue-share (70/30) to seed supply.\n"
-            "4. Streamline mobile spectator mode—lowers friction for Android users."
+            "1. **Market** – Target mid-tier gamers first; +200 Elo stat is a strong hook.\n"
+            "2. **Product** – Segment by game genre (MOBA vs. FPS) to tailor analytics.\n"
+            "3. **Biz model** – Revenue-share 70/30 with coaches; recruit 50 verified pros to seed supply.\n"
+            "4. **Team** – Hire growth hacker experienced in Twitch integrations for viral loops."
         )
     },
-    # 16. TravelTech NLP
     {
-        "instruction": INSTRUCTION_PROMPT,
-        "input": (
-            "Our app generates multi-country itineraries in seconds using NLP."
-        ),
+        "input": "Our app generates multi-country itineraries in seconds using NLP.",
+        "context": "64 % of travelers use itinerary planners; global TAM $1.6B (Phocuswright 2023).",
         "output": (
-            "1. List data sources: Amadeus, Skyscanner APIs—real-time pricing is table-stakes.\n"
-            "2. Add ‘drag-and-drop’ reorder UI for customization; increases retention.\n"
-            "3. Launch affiliate booking flow—10 % commission on lodging.\n"
-            "4. Consider freemium: 3 itineraries free, $5 per extra."
+            "1. **Market** – Partner with travel blogs to capture 64 % who plan itineraries.\n"
+            "2. **Product** – Add drag-and-drop reorder UI; improves retention by 12 % (UX study 2023).\n"
+            "3. **Biz model** – Affiliate lodging: 10 % commission; $5 ARPU/mo feasible.\n"
+            "4. **Team** – Hire ex-Trivago developer to optimize scraping reliability."
         )
     },
-    # 17. MentalHealthTech
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our AI chatbot delivers CBT techniques for mild anxiety with option to escalate to human therapists."
         ),
+        "context": "Digital CBT reduces anxiety symptoms by 42 % in 8 weeks (JAMA Psychiatry 2023).",
         "output": (
-            "1. Publish safety audit—95 % correct CBT technique selection on annotated dataset of 1 K queries.\n"
-            "2. Implement crisis-trigger phrases → immediate human handoff within 30 s.\n"
-            "3. Obtain SOC 2 Type II + HIPAA audits—enter enterprise employer market.\n"
-            "4. Sliding-scale pricing ($5–$25/mo) improves accessibility, aligns with mission."
+            "1. **Market** – Seek employers: mental health benefit saves average $3 per $1 invested.\n"
+            "2. **Product** – Publish 42 % symptom reduction stat vs. baseline.\n"
+            "3. **Biz model** – Sliding-scale subscription $5–$25/mo; improves accessibility.\n"
+            "4. **Team** – Implement crisis-trigger phrases → human handoff within 30s."
         )
     },
-    # 18. Sustainability Marketplace
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our marketplace lets neighbors trade surplus homegrown produce using a credit system."
         ),
+        "context": "Community food sharing reduces landfill by 15 % in pilot towns (EPA 2022).",
         "output": (
-            "1. Clarify logistics: integrate USPS flat-rate boxes or local pickup points.\n"
-            "2. Gamify contributions—leaderboard of CO₂ avoided to incentivize supply.\n"
-            "3. Offer premium ‘organic verified’ badge ($2/mo) for power growers.\n"
-            "4. Partner with city compost programs—close the loop."
+            "1. **Market** – Highlight 15 % landfill reduction; appeals to eco-conscious users.\n"
+            "2. **Product** – Gamify contributions: leaderboard of CO₂ avoided.\n"
+            "3. **Biz model** – Offer premium ‘organic verified’ badge at $2/mo for power growers.\n"
+            "4. **Team** – Partner with city compost programs to close the loop."
         )
     },
-    # 19. HRTech
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
             "Our AI ranks job applicants for recruiters based on CV skill match and cultural fit."
         ),
+        "context": "70 % of firms report bias in manual CV screening (SHRM 2023).",
         "output": (
-            "1. Publish bias-audit results (gender, ethnicity) and mitigation methods (reweighing, counterfactual fairness).\n"
-            "2. Add Chrome extension for recruiters—reduces ATS friction.\n"
-            "3. Charge per job slot (starts at $49) with unlimited applicant scoring.\n"
-            "4. Provide API for high-volume clients like RPO firms."
+            "1. **Market** – Target RPO firms that lose $8 B/yr to bad hires; AI bias reduction is a strong pitch.\n"
+            "2. **Product** – Publish bias-audit results; show 25 % lower gender bias vs. baseline.\n"
+            "3. **Biz model** – Charge per job slot $49; unlimited scoring.\n"
+            "4. **Team** – Add diversity & inclusion lead to oversee fairness algorithms."
         )
     },
-    # 20. Biotech
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "We use CRISPR-based liquid biopsy to detect early-stage pancreatic cancer "
-            "from a 5 ml blood sample."
+            "We use CRISPR-based liquid biopsy to detect early-stage pancreatic cancer from a 5 ml blood sample."
         ),
+        "context": "Pancreatic cancer 5-year survival < 10 %; early detection boosts to 35 % (NIH 2023).",
         "output": (
-            "SWOT:\n"
-            "S • Non-invasive test with 92 % sensitivity (n=300) — clear USP.\n"
-            "W • Clinical trial Ph1 only; need >1 000 cohort for FDA PMA.\n"
-            "O • Partner with Roche to leverage existing distribution to oncologists.\n"
-            "T • Guardant & Grail have deeper pockets—focus on a single cancer to stay agile."
+            "1. **Market** – Sell to oncology clinics: early detection boosts survival to 35 %.\n"
+            "2. **Product** – Publish 92 % sensitivity/89 % specificity on 300-patient study.\n"
+            "3. **Biz model** – $499/test reimbursed by insurers; margin 60 %.\n"
+            "4. **Team** – Begin Phase II trial with Mayo Clinic collaboration."
         )
     },
-    # 21. Quantum Computing
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "Our cloud platform offers access to a 1 K-qubit neutral-atom quantum computer "
-            "via Python SDK."
+            "Our cloud platform offers access to a 1K-qubit neutral-atom quantum computer via Python SDK."
         ),
+        "context": "Quantum volume 512 achieved; 2-qubit gate fidelity 99.5 % (Q Research 2024).",
         "output": (
-            "1. Publish quantum volume and 2-qubit gate fidelity—VCs need hard numbers.\n"
-            "2. Offer hybrid classical + quantum solvers (QAOA + GPU fallback) to improve "
-            "developer adoption.\n"
-            "3. Start with research institutes (ARR $2 M) before enterprise expansion.\n"
-            "4. Plan roadmap to 10 K qubits by 2027—communicate path to quantum advantage."
+            "1. **Market** – Target academic research first; 512 quantum volume is a compelling hook.\n"
+            "2. **Product** – Offer hybrid QAOA + GPU fallback; expands developer base.\n"
+            "3. **Biz model** – Research subscription $15k/mo for 100h quantum time.\n"
+            "4. **Team** – Add classical HPC veteran to optimize hybrid workloads."
         )
     },
-    # 22. GovTech / Smart City SaaS
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "We provide a SaaS digital-twin of municipal traffic networks to help city "
-            "planners optimize signal timing and reduce congestion."
+            "We provide a SaaS digital-twin of municipal traffic networks to help city planners optimize signal timing."
         ),
+        "context": "Pilot city saw 12 % travel-time reduction over 6 months (MIT Smart City 2023).",
         "output": (
-            "1. Reference compliance with NIST 800-53 & FedRAMP Moderate—procurement teams care.\n"
-            "2. Offer ROI case study: 12 % travel-time reduction in Pilot City over 6 months.\n"
-            "3. Provide open-data export so cities meet transparency regulations.\n"
-            "4. Pricing: annual license $250 K per 1 M population + professional services."
+            "1. **Market** – Package to mid-size cities (pop 500k–1M); 12 % reduction is high-ROI.\n"
+            "2. **Product** – Export open-data to meet city transparency mandates.\n"
+            "3. **Biz model** – Annual license $250k/1M population + $50k consulting.\n"
+            "4. **Team** – Hire NIST compliance expert to streamline federal grants."
         )
     },
-    # 23. Social Enterprise / Off-Grid Solar
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "Our non-profit startup distributes low-cost solar lanterns to off-grid "
-            "communities and funds the program through carbon-offset credits."
+            "Our non-profit startup distributes low-cost solar lanterns to off-grid communities and funds through carbon-credit sales."
         ),
+        "context": "Each lantern avoids 200 kg CO₂/yr compared to kerosene (UNEP 2023).",
         "output": (
-            "1. Quantify impact: each lantern avoids 200 kg CO₂/yr by replacing kerosene.\n"
-            "2. Structure revenue: sell verified carbon credits ($8/ton) to corporates—"
-            "projected ARR $1.6 M at 40 K lanterns.\n"
-            "3. Build local repair hubs—boosts job creation and device longevity.\n"
-            "4. Track SDG 7, 13 progress—critical when applying for impact grants."
+            "1. **Market** – Emphasize 200 kg CO₂/yr impact; taps into CSR budgets.\n"
+            "2. **Product** – Structure verified carbon credit sales at $8/ton → $1.6M ARR at 40k lanterns.\n"
+            "3. **Biz model** – Set up local repair hubs; extends device life by 50 %.\n"
+            "4. **Team** – Collaborate with regional NGOs to scale community outreach."
         )
     },
-    # 24. Web3 / GameFi
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "Our GameFi project rewards players with tradable tokens for completing quests "
-            "in a fantasy MMORPG."
+            "Our GameFi project rewards players with tradable tokens for completing quests in a fantasy MMORPG."
         ),
+        "context": "Mid-core MMORPGs see 26 % Day 30 retention vs. F2P average 12 % (AppAnnie 2024).",
         "output": (
-            "1. Publish tokenomics sheet: total supply, inflation schedule, and sink mechanics "
-            "to curb hyper-inflation.\n"
-            "2. Undergo smart-contract audit (e.g., CertiK) before mainnet launch.\n"
-            "3. Add free-to-play onboarding with custodial wallets—reduces Web3 friction.\n"
-            "4. Plan secondary-market liquidity via market-maker agreement; target 10 % "
-            "daily turnover."
+            "1. **Market** – Target mid-core segment; 26 % Day-30 retention is an entry KPI.\n"
+            "2. **Product** – Publish token sink mechanics to maintain price stability.\n"
+            "3. **Biz model** – Onboard custodial wallets to cut friction by 40 % (Polygon study).\n"
+            "4. **Team** – Audit smart contracts with CertiK before mainnet launch."
         )
     },
-    # 25. PropTech / AI-Based Property Valuation (the missing 25th example)
     {
-        "instruction": INSTRUCTION_PROMPT,
         "input": (
-            "Our PropTech startup uses an AI model to automatically value residential properties "
-            "based on MLS data, local comparables, and real-time market trends."
+            "Our PropTech startup uses an AI model to automatically value residential properties based on MLS data."
         ),
+        "context": "AVMs underwrite 70 % of US mortgages pre-qual (Fannie Mae 2024).",
         "output": (
-            "1. Validate model accuracy: compare AI valuations to closing prices in 5 major metros; "
-            "publish Mean Absolute Error (MAE) ≤ $5,000.\n"
-            "2. Explain data sources: which MLS feeds and third-party APIs (Zillow, Redfin) are used, "
-            "and how often are they updated?\n"
-            "3. Address regulatory/underwriting compliance: outline how your model meets Appraisal "
-            "Foundation (USPAP) standards for automated valuations.\n"
-            "4. Secure partnerships with real estate brokerages: integrate with their CRM to provide "
-            "instant comps on listing pages.\n"
-            "5. Discuss monetization: charge per valuation API call ($1/call) or offer monthly subscriptions "
-            "for brokerages at $499/mo."
+            "1. **Market** – Capture broker API demand; AVMs handle 7M transactions/yr.\n"
+            "2. **Product** – Demonstrate MAE ≤ $5k vs. Redfin’s $6.2k in 5 metros.\n"
+            "3. **Biz model** – Charge $1/api call or $499/mo broker license; 85 % gross margin.\n"
+            "4. **Team** – Hire USPAP-certified appraiser to meet regulatory audits."
         )
     },
 ]
 
-# 3) Transform each Alpaca triple into a “ShareGPT”-style chat message:
-#
-#    {
-#      "messages": [
-#        {"role":"system","content": SYSTEM_PROMPT},
-#        {"role":"user",  "content": "<instruction>\n\n<input>"},
-#        {"role":"assistant","content": "<output>"}
-#      ]
-#    }
-with open(SFT_FILE, "w", encoding="utf-8") as fp:
-    for ex in examples_alpaca:
-        user_content = f"{ex['instruction']}\n\n{ex['input']}"
-        chat_example = {
-            "messages": [
-                {"role": "system",    "content": SYSTEM_PROMPT},
-                {"role": "user",      "content": user_content},
-                {"role": "assistant", "content": ex["output"]}
-            ]
-        }
-        fp.write(json.dumps(chat_example, ensure_ascii=False) + "\n")
+# ───────────────────────── Negative “no-context” examples (3) ─────────────────
+NEGATIVE = [
+    {
+        "input": "We design algae-based protein bars for endurance athletes.",
+        "context": "",
+        "output": "INSUFFICIENT_CONTEXT",
+    },
+    {
+        "input": "We rent autonomous delivery robots to college campuses.",
+        "context": "",
+        "output": "INSUFFICIENT_CONTEXT",
+    },
+    {
+        "input": "We build AR glasses for industrial maintenance workers.",
+        "context": "",
+        "output": "INSUFFICIENT_CONTEXT",
+    },
+]
 
-print(f"✅ Wrote {len(examples_alpaca)} ShareGPT‐style examples to {SFT_FILE}")
+# ──────────────────────── helper to convert to ShareGPT format ─────────────────
+def to_conversation(ex):
+    user_msg = USER_PREFIX + ex["input"] + CTX_PREFIX + ex["context"]
+    return {
+        "messages": [
+            {"role": "system",    "content": SYSTEM_PROMPT},
+            {"role": "user",      "content": user_msg},
+            {"role": "assistant", "content": ex["output"]}
+        ]
+    }
 
-# 4) Create dataset_info.json for “sharegpt” format and template “llama3”
-dataset_info = {
+# ───────────────────────── Write SFT JSONL ─────────────────────────────────────
+all_rows = POSITIVE + NEGATIVE
+with SFT_FILE.open("w", encoding="utf-8") as fp:
+    for row in all_rows:
+        fp.write(json.dumps(to_conversation(row), ensure_ascii=False) + "\n")
+print(f"✅  Wrote {len(all_rows)} examples → {SFT_FILE}")
+
+# ───────────────────────── Write dataset_info.json ────────────────────────────
+info = {
     "sft_train": {
-        "file_name": "sft_train.jsonl",
+        "file_name": SFT_FILE.name,
         "formatting": "sharegpt",
-        "columns": {
-            "messages": "messages"
-        },
+        "columns": {"messages": "messages"},
         "tags": {
-            "role_tag": "role",
-            "content_tag": "content",
-            "user_tag": "user",
+            "role_tag":      "role",
+            "content_tag":   "content",
+            "user_tag":      "user",
             "assistant_tag": "assistant",
-            "system_tag": "system"
+            "system_tag":    "system"
         }
     }
 }
-
-with open(DATASET_INFO, "w", encoding="utf-8") as fp:
-    json.dump(dataset_info, fp, ensure_ascii=False, indent=2)
-
-print(f"✅ Created dataset_info.json at {DATASET_INFO}")
+with DATASET_INFO.open("w", encoding="utf-8") as fp:
+    json.dump(info, fp, indent=2, ensure_ascii=False)
+print(f"✅  Created {DATASET_INFO}")
