@@ -1,36 +1,48 @@
-# ─── llama3_lora_sft_h100.yaml ─────────────────────────────────────────────
-
+### ───────── model ─────────
 model_name_or_path: ./models/base/Meta-Llama-3-8B-Instruct
+trust_remote_code: true
+quantization_bit: 8        # QLoRA → fits 8 B on 24 GB GPU
 
-dataset_dir: ./data_processed
-dataset: [sft_train]          # assumes "sft_train.jsonl" or combined
-
-# Use pure FP16 (no 4-bit) on H100 to maximize numeric fidelity.
+### ───────── method ───────
+stage: sft
+do_train: true
 finetuning_type: lora
-quantization_bit: 16         # ← 16-bit FP16 instead of 4-bit
+lora_rank: 64              # reduce to 8 if VRAM is <24 GB
+lora_target: all           # inject LoRA into all linear layers
+flash_attn: auto           # use FlashAttention if GPU supports
 
+### ───────── dataset ──────
+dataset_dir: ./data_processed
+dataset: sft_train         # must match key in dataset_info.json
+template: llama3           # let LF use Llama-3 chat template
+cutoff_len: 2048
+val_size: 0.1              # 10 % of 25 → 2–3 samples for quick eval
+overwrite_cache: true
+preprocessing_num_workers: 8
+dataloader_num_workers: 2
+max_samples: 1000          # hard cap (not hit with 25 rows)
+
+### ───────── output ───────
 output_dir: ./models/adapters/llama3_lora
+logging_steps: 10
+save_steps: 200
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+report_to: none            # [none | wandb | tensorboard | …]
 
-# H100 can hold a much larger batch. If each sequence is ~512 tokens:
-per_device_train_batch_size: 16
+### ───────── train ────────
+per_device_train_batch_size: 4     # effective batch = 4×8 = 32
+gradient_accumulation_steps: 8
+learning_rate: 2.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+resume_from_checkpoint: null
 
-# If you want an “effective batch” of ~32–64, you can still use:
-gradient_accumulation_steps: 1  # no accumulation (logical batch = 16)
-# Or if you really want 64 logical, do 16 × 4:
-# gradient_accumulation_steps: 4
-
-num_train_epochs: 3
-
-learning_rate: 2e-4           # keep the same base LR or slightly increase to 3e-4
-
-# LoRA-specific settings
-lora_rank: 64
-lora_alpha: 32                # a common default, you can keep or bump if desired
-
-save_steps: 100               # save checkpoints every 100 steps
-logging_steps: 20
-
-# Use FlashAttention if you have it installed; H100 loves it.
-flash_attn: true
-
-report_to: none
+### ───────── eval (quick sanity) ────────
+eval_strategy: steps
+eval_steps: 200
+per_device_eval_batch_size: 1
