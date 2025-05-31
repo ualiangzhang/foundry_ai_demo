@@ -4,51 +4,50 @@
 ############################################################
 
 ### ───────── Model Settings ─────────
-model_name_or_path: ./models/base/Meta-Llama-3-8B-Instruct
-trust_remote_code: true
+model_name_or_path: ./models/base/Meta-Llama-3-8B-Instruct   # Path to the pre-trained base LLaMA3-8B instruct model
+trust_remote_code: true                                       # Allow model code from the repository to be trusted and executed
 
 ### ───────── Method Settings ────────
-stage: sft
-do_train: true
-finetuning_type: lora
-lora_rank: 16          # small rank avoids overfitting on ~28 examples
-lora_alpha: 32
-lora_dropout: 0.05
-lora_target: all
-flash_attn: auto       # use FlashAttention on H100 if available
+stage: sft                                                    # Indicates we are performing supervised fine-tuning
+do_train: true                                                # Enable training phase
+finetuning_type: lora                                         # Use LoRA (Low-Rank Adaptation) for parameter-efficient fine-tuning
+lora_rank: 16                                                 # LoRA rank; smaller rank helps avoid overfitting on a small dataset (~28 examples)
+lora_alpha: 32                                                # LoRA scaling factor (alpha); higher alpha can improve stability
+lora_dropout: 0.05                                            # Dropout probability for LoRA layers to regularize fine-tuning
+lora_target: all                                              # Apply LoRA to all Linear layers in the model
+flash_attn: auto                                              # Automatically use FlashAttention if available on H100 GPUs
 
 ### ───────── Dataset Settings ───────
-dataset_dir: ./data_processed
-dataset: sft_train
-template: llama3
-cutoff_len: 2048
-# We disable HuggingFace's built-in evaluation: set val_size = 0
-val_size: 0.0
-overwrite_cache: true
-preprocessing_num_workers: 8
-dataloader_num_workers: 4
-max_samples: 1000
+dataset_dir: ./data_processed                                  # Directory containing the processed dataset files (JSONL)
+dataset: sft_train                                             # Base name of the dataset (expects sft_train.jsonl in dataset_dir)
+template: llama3                                               # Use the “llama3” prompt template for formatting examples
+cutoff_len: 2048                                               # Maximum token length for inputs (truncate longer sequences to this length)
+val_size: 0.0                                                  # Disable built-in HuggingFace evaluation split (0% validation) to avoid NaN on tiny set
+overwrite_cache: true                                          # Whether to overwrite any existing cached dataset preprocessing
+preprocessing_num_workers: 8                                   # Number of worker processes for data preprocessing
+dataloader_num_workers: 4                                      # Number of worker processes to load data during training
+max_samples: 1000                                              # Maximum number of samples to include (limit dataset size if needed)
 
 ### ───────── Output Settings ────────
-output_dir: ./models/adapters/llama3_lora
-logging_steps: 10
-save_steps: 200
-plot_loss: true
-overwrite_output_dir: true
-save_only_model: false
-report_to: none
+output_dir: ./models/adapters/llama3_lora                     # Directory to save the fine-tuned LoRA adapter weights and logs
+logging_steps: 10                                              # Log training metrics every 10 steps
+save_steps: 200                                                # Save a checkpoint every 200 steps
+plot_loss: true                                                # Generate and save a training loss plot at the end
+overwrite_output_dir: true                                     # Overwrite output_dir if it already exists
+save_only_model: false                                         # Save optimizer checkpoints and config in addition to model weights
+report_to: none                                                # Disable reporting to any external service (e.g., WandB, TensorBoard)
 
 ### ───────── Training Settings ──────
-per_device_train_batch_size: 8       # Because we have two H100s, each sees 8 → global batch 16
-gradient_accumulation_steps: 4       # effective global batch size = 16 × 4 = 64
-learning_rate: 0.0002
-weight_decay: 0.01
-num_train_epochs: 3
-lr_scheduler_type: cosine
-warmup_ratio: 0.1
-bf16: true
-ddp_find_unused_parameters: false
-ddp_timeout: 180000
+per_device_train_batch_size: 8                                  # Batch size per GPU (2 × H100 → total GPUs = 2, so global batch = 8 × 2 = 16)
+gradient_accumulation_steps: 4                                 # Accumulate gradients over 4 steps → effective global batch = 16 × 4 = 64
+learning_rate: 0.001                                           # Initial learning rate for optimizer
+weight_decay: 0.01                                              # L2 weight decay to regularize fine-tuning
+num_train_epochs: 3                                             # Number of full passes over the dataset
+lr_scheduler_type: cosine                                       # Cosine learning rate scheduling
+warmup_ratio: 0.1                                               # Warmup fraction (10% of total training steps used to gradually increase LR)
+bf16: true                                                      # Use bfloat16 mixed precision on H100 for faster training and reduced memory
+ddp_find_unused_parameters: false                               # Disable detection of unused parameters in Distributed Data Parallel (improves speed)
+ddp_timeout: 180000                                             # Timeout (in seconds) for DDP barrier synchronization (extended for long-running jobs)
 
 ### ───────── Evaluation Settings ────
 # Disabled to avoid NaN on tiny set
