@@ -69,7 +69,7 @@ if __name__ == "__main__":
     base_chain = make_base_chain(retriever)
 
     # ─── 4) Retrieve the top-3 docs (identical for both models) ─────────────────
-    top_docs = retriever.invoke({"query": query, "k": 3})
+    top_docs = retriever.get_relevant_documents(query)[:3]
 
     # ─── 5) Print the top-3 retrieved snippets once ──────────────────────────────
     print("\n" + "=" * 80)
@@ -83,14 +83,14 @@ if __name__ == "__main__":
     print("\n" + "=" * 80)
     print("STEP 2: Base LLaMA-3 (no LoRA) response")
     print("=" * 80)
-    base_result = base_chain.invoke({"query": query})
+    base_result = base_chain({"query": query})
     print(base_result["result"].strip())
 
     # ─── 7) Generate and print the LoRA-fine-tuned response ──────────────────────
     print("\n" + "=" * 80)
     print("STEP 3: LoRA-Fine-Tuned LLaMA-3 response")
     print("=" * 80)
-    lora_result = lora_chain.invoke({"query": query})
+    lora_result = lora_chain({"query": query})
     print(lora_result["result"].strip())
 
     print("\n" + "=" * 80)
