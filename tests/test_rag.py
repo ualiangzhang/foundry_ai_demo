@@ -29,11 +29,12 @@ Note:
 import logging
 import sys
 from pathlib import Path
-from typing import Any, List, Dict, Union
+from typing import Any, List, Dict
 
 import transformers
 from langchain_huggingface import HuggingFacePipeline
 from langchain.chains import RetrievalQA
+from langchain.schema import Document
 
 # ─── Add project root (one level up from tests/) to Python path ──────────────
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
@@ -86,7 +87,7 @@ def make_base_chain(
             model=base_model,
             tokenizer=base_tokenizer,
             max_new_tokens=max_new_tokens,
-            # Removed temperature and do_sample to avoid invalid flags
+            # 不再传递 temperature 和 do_sample，以避免无效标志警告
         )
     except Exception as e:
         msg = f"Failed to create HF pipeline for base model: {e}"
@@ -139,7 +140,7 @@ def retrieve_top_k(
     retriever: Any,
     query: str,
     k: int = 3
-) -> List[Dict[str, Any]]:
+) -> List[Document]:
     """
     Retrieve the top-k documents for a given query from the retriever.
 
@@ -149,40 +150,33 @@ def retrieve_top_k(
         k: Number of top documents to return (default: 3).
 
     Returns:
-        A list of dictionaries, each representing a retrieved document.
+        A list of Document objects with `page_content` and `metadata`.
 
     Raises:
         RuntimeError: If the retriever invocation fails.
     """
     logger.info(f"Retrieving top {k} documents for query: {query}")
     try:
-        docs = retriever.invoke({"query": query, "k": k})
-        return docs
+        # 通过 get_relevant_documents 直接获得 Document 列表
+        docs: List[Document] = retriever.get_relevant_documents(query)
+        return docs[:k]  # 只取前 k 条
     except Exception as e:
         msg = f"Retriever invocation failed: {e}"
         logger.error(msg)
         raise RuntimeError(msg)
 
 
-def format_snippet(doc: Union[Dict[str, Any], Any]) -> str:
+def format_snippet(doc: Document) -> str:
     """
-    Extract and format the snippet text from a retrieved doc.
+    Extract and format the snippet text from a retrieved Document.
 
     Args:
-        doc: A dictionary or Document object representing a retrieved document.
+        doc: A langchain.schema.Document.
 
     Returns:
         A clean string snippet for printing.
     """
-    # Some retrievers return a Document object with page_content; others return a dict
-    if hasattr(doc, "page_content"):
-        content = doc.page_content
-    elif isinstance(doc, dict):
-        # Chroma/Qdrant retrievers often return {'id':..., 'text':..., 'metadata':...}
-        content = doc.get("page_content") or doc.get("text") or ""
-    else:
-        content = str(doc)
-
+    content: str = doc.page_content or ""
     return content.strip().replace("\n", " ")
 
 
