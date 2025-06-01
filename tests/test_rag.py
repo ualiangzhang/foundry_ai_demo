@@ -29,7 +29,7 @@ Note:
 import logging
 import sys
 from pathlib import Path
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Any
 
 import transformers
 from langchain_huggingface import HuggingFacePipeline
