@@ -2,28 +2,28 @@
 """
 src/rag/prompts.py
 
-Defines ChatPromptTemplate instances for various RAG-based startup tasks using
-LLaMA 3.
+Defines ChatPromptTemplate instances for various retrieval-augmented generation (RAG)
+startup tasks using LLaMA 3. Each template structures a system+user conversation for
+LangChain's ChatPromptTemplate.
 
 Templates
 ---------
-- **RAG_WRAPPER** – Generic context‑question prompt for knowledge‑grounded Q&A.
-- **PROJECT_EVAL**  – Matches the SFT training format (veteran VC partner giving
-  four numbered recommendations).
-- **PITCH_DECK**   – Generates concise bullet points for standard pitch‑deck
-  slides.
+- RAG_WRAPPER: Generic context-question prompt for knowledge-grounded Q&A.
+- PROJECT_EVAL: Matches the SFT training format (veteran VC partner giving four
+  numbered recommendations).
+- PITCH_DECK: Generates concise bullet points for standard pitch-deck slides.
 
-Example
--------
-```python
-from src.rag.prompts import PROJECT_EVAL
-messages = PROJECT_EVAL.format_prompt(context="…", question="…").to_messages()
-```
+Usage:
+    from src.rag.prompts import PROJECT_EVAL
+    messages = PROJECT_EVAL.format_prompt(context="…", question="…").to_messages()
 """
 
 import logging
+from typing import Dict
+
 from langchain_core.prompts import ChatPromptTemplate
 
+# Configure module-level logger
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -32,40 +32,69 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ─────────────────────── Generic RAG wrapper ────────────────────────────────
-SYSTEM_STARTUP = (
+SYSTEM_STARTUP: str = (
     "You are a seasoned startup mentor. Use the CONTEXT below to answer "
     "the user's question. If the context is insufficient, say so instead of guessing."
 )
 
-RAG_WRAPPER = ChatPromptTemplate.from_messages([
-    ("system", SYSTEM_STARTUP),
-    ("user", "CONTEXT:\n{context}\n\nQUESTION:\n{question}"),
-])
+try:
+    RAG_WRAPPER: ChatPromptTemplate = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_STARTUP),
+        ("user", "CONTEXT:\n{context}\n\nQUESTION:\n{question}"),
+    ])
+    logger.info("RAG_WRAPPER prompt template initialized successfully.")
+except Exception as e:
+    logger.error(f"Failed to create RAG_WRAPPER ChatPromptTemplate: {e}")
+    raise
 
-# ─────────────────────── Project‑evaluation prompt (SFT‑aligned) ────────────
-PROJECT_EVAL = ChatPromptTemplate.from_messages([
-    (
-        "system",
-        "You are a veteran VC partner. Using ONLY the reference snippets, "
-        "produce exactly FOUR numbered recommendations covering market, "
-        "product, business model and team. Each bullet ≤ 50 words, no questions. "
-        "If the snippets are empty, reply exactly `INSUFFICIENT_CONTEXT`.",
-    ),
-    (
-        "user",
-        "### Startup summary\n{question}\n\n### Reference snippets\n{context}",
-    ),
-])
+# ─────────────────────── Project-evaluation prompt (SFT-aligned) ────────────
+PROJECT_EVAL_SYSTEM: str = (
+    "You are a veteran VC partner. Using ONLY the reference snippets, "
+    "produce exactly FOUR numbered recommendations covering market, "
+    "product, business model and team. Each bullet ≤ 50 words, no questions. "
+    "If the snippets are empty, reply exactly `INSUFFICIENT_CONTEXT`."
+)
+PROJECT_EVAL_USER: str = "### Startup summary\n{question}\n\n### Reference snippets\n{context}"
 
-# ─────────────────────── Pitch‑deck generation prompt ───────────────────────
-PITCH_DECK = ChatPromptTemplate.from_messages([
-    (
-        "system",
-        "You write concise bullet points for startup pitch‑deck slides.",
-    ),
-    (
-        "user",
-        "### Venture:\n{question}\n\n### Research snippets:\n{context}\n\n"
-        "Generate slides for Problem, Solution, Market, Business Model, Team.",
-    ),
-])
+try:
+    PROJECT_EVAL: ChatPromptTemplate = ChatPromptTemplate.from_messages([
+        ("system", PROJECT_EVAL_SYSTEM),
+        ("user", PROJECT_EVAL_USER),
+    ])
+    logger.info("PROJECT_EVAL prompt template initialized successfully.")
+except Exception as e:
+    logger.error(f"Failed to create PROJECT_EVAL ChatPromptTemplate: {e}")
+    raise
+
+# ─────────────────────── Pitch-deck generation prompt ───────────────────────
+PITCH_DECK_SYSTEM: str = "You write concise bullet points for startup pitch-deck slides."
+PITCH_DECK_USER: str = (
+    "### Venture:\n{question}\n\n### Research snippets:\n{context}\n\n"
+    "Generate slides for Problem, Solution, Market, Business Model, Team."
+)
+
+try:
+    PITCH_DECK: ChatPromptTemplate = ChatPromptTemplate.from_messages([
+        ("system", PITCH_DECK_SYSTEM),
+        ("user", PITCH_DECK_USER),
+    ])
+    logger.info("PITCH_DECK prompt template initialized successfully.")
+except Exception as e:
+    logger.error(f"Failed to create PITCH_DECK ChatPromptTemplate: {e}")
+    raise
+
+
+def get_all_prompts() -> Dict[str, ChatPromptTemplate]:
+    """Return a dictionary of all available prompt templates.
+
+    Returns:
+        A dict mapping template names to ChatPromptTemplate instances:
+            - "rag": RAG_WRAPPER
+            - "eval": PROJECT_EVAL
+            - "pitch": PITCH_DECK
+    """
+    return {
+        "rag": RAG_WRAPPER,
+        "eval": PROJECT_EVAL,
+        "pitch": PITCH_DECK,
+    }
