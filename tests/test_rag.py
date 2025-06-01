@@ -1,245 +1,97 @@
-#!/usr/bin/env python3
-"""
-tests/test_rag.py
+# tests/test_rag.py
 
-Integration tests for the RAG-based LLaMA-3 chains. This script:
-
-1. Adds the project root to sys.path so that src modules can be imported.
-2. Defines helper functions to build:
-   - A "base" RetrievalQA chain using the unmodified LLaMA-3.
-   - A "LoRA" RetrievalQA chain that loads the LoRA-fine-tuned LLaMA-3.
-3. Compares both chains by:
-   a. Retrieving the top-3 semantically similar documents for a sample query.
-   b. Generating responses with and without LoRA.
-4. Prints retrieved snippets and both model responses side by side.
-
-Usage:
-    python3 tests/test_rag.py
-
-Ensure:
-    - The "data_processed" and "embeddings/chroma" directories are populated.
-    - The LoRA adapter exists at 'models/adapters/llama3_lora'.
-    - All dependencies (transformers, langchain, qdrant-client) are installed.
-
-Note:
-    This is not a unit test—it's an integration check. It prints output
-    to stdout rather than asserting exact values.
-"""
-
-import logging
 import sys
 from pathlib import Path
-from typing import Any, List, Dict
+
+# ─── Add project root (one level up from tests/) to Python path ──────────────
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# ─── Core imports ─────────────────────────────────────────────────────────────
+from src.rag.chains import build_chain  # RetrievalQA chain with LoRA merged by default
+from src.rag.model_loader import load_llama
+from src.rag.prompts import PROJECT_EVAL
 
 import transformers
 from langchain_huggingface import HuggingFacePipeline
 from langchain.chains import RetrievalQA
-from langchain.schema import Document
 
-# ─── Add project root (one level up from tests/) to Python path ──────────────
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-# ─── Core imports from src ────────────────────────────────────────────────────
-from src.rag.chains import build_chain
-from src.rag.model_loader import load_llama
-from src.rag.prompts import PROJECT_EVAL
-
-# Configure module-level logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger(__name__)
-
-
-def make_base_chain(
-    retriever: Any,
-    max_new_tokens: int = 512
-) -> RetrievalQA:
+def make_base_chain(retriever, max_new_tokens=512, temperature=0.0):
     """
     Load the base (no-LoRA) LLaMA-3 model and wrap it in a RetrievalQA chain.
-
-    Args:
-        retriever: A LangChain Retriever (e.g., from Chroma or Qdrant).
-        max_new_tokens: Maximum tokens to generate per call (default: 512).
-
-    Returns:
-        A RetrievalQA chain that uses the base LLaMA-3 model.
-
-    Raises:
-        RuntimeError: If model or tokenizer loading fails.
     """
-    logger.info("Loading base (no-LoRA) LLaMA-3 model and tokenizer...")
-    try:
-        base_model, base_tokenizer = load_llama(use_lora=False)
-    except Exception as e:
-        msg = f"Failed to load base LLaMA-3 model/tokenizer: {e}"
-        logger.error(msg)
-        raise RuntimeError(msg)
+    # 1) Load base model + tokenizer without LoRA
+    base_model, base_tok = load_llama(use_lora=False)
 
-    logger.info("Initializing HuggingFace text-generation pipeline (greedy)...")
-    try:
-        pipeline = transformers.pipeline(
-            "text-generation",
-            model=base_model,
-            tokenizer=base_tokenizer,
-            max_new_tokens=max_new_tokens,
-            # 不再传递 temperature 和 do_sample，以避免无效标志警告
-        )
-    except Exception as e:
-        msg = f"Failed to create HF pipeline for base model: {e}"
-        logger.error(msg)
-        raise RuntimeError(msg)
+    # 2) Build a HuggingFace pipeline for deterministic text generation
+    pipe = transformers.pipeline(
+        "text-generation",
+        model=base_model,
+        tokenizer=base_tok,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        do_sample=False,
+        repetition_penalty=1.1
+    )
+    base_llm = HuggingFacePipeline(pipeline=pipe)
 
-    base_llm = HuggingFacePipeline(pipeline=pipeline)
-
-    logger.info("Building RetrievalQA chain with PROJECT_EVAL prompt (base model)...")
-    try:
-        base_chain = RetrievalQA.from_chain_type(
-            llm=base_llm,
-            chain_type="stuff",
-            retriever=retriever,
-            chain_type_kwargs={"prompt": PROJECT_EVAL},
-        )
-    except Exception as e:
-        msg = f"Failed to build base RetrievalQA chain: {e}"
-        logger.error(msg)
-        raise RuntimeError(msg)
-
+    # 3) Build a RetrievalQA chain using the same retriever and prompt
+    base_chain = RetrievalQA.from_chain_type(
+        llm=base_llm,
+        chain_type="stuff",
+        retriever=retriever,
+        chain_type_kwargs={"prompt": PROJECT_EVAL}
+    )
     return base_chain
 
-
-def make_lora_chain(store: str = "chroma") -> RetrievalQA:
+def make_lora_chain(store="chroma"):
     """
     Load the LoRA-merged LLaMA-3 and create a RetrievalQA chain exactly as in training.
-
-    Args:
-        store: Which vector store to use ("chroma" or "qdrant").
-
-    Returns:
-        A RetrievalQA chain configured with LoRA-fine-tuned LLaMA-3.
-
-    Raises:
-        RuntimeError: If chain creation fails.
     """
-    logger.info(f"Building LoRA-fine-tuned chain using '{store}' store...")
-    try:
-        lora_chain = build_chain(kind="eval", store=store)
-    except Exception as e:
-        msg = f"Failed to build LoRA RetrievalQA chain: {e}"
-        logger.error(msg)
-        raise RuntimeError(msg)
-
-    return lora_chain
-
-
-def retrieve_top_k(
-    retriever: Any,
-    query: str,
-    k: int = 3
-) -> List[Document]:
-    """
-    Retrieve the top-k documents for a given query from the retriever.
-
-    Args:
-        retriever: A LangChain retriever (as returned by chain.retriever).
-        query: The textual query to retrieve against.
-        k: Number of top documents to return (default: 3).
-
-    Returns:
-        A list of Document objects with `page_content` and `metadata`.
-
-    Raises:
-        RuntimeError: If the retriever invocation fails.
-    """
-    logger.info(f"Retrieving top {k} documents for query: {query}")
-    try:
-        # 通过 get_relevant_documents 直接获得 Document 列表
-        docs: List[Document] = retriever.get_relevant_documents(query)
-        return docs[:k]  # 只取前 k 条
-    except Exception as e:
-        msg = f"Retriever invocation failed: {e}"
-        logger.error(msg)
-        raise RuntimeError(msg)
-
-
-def format_snippet(doc: Document) -> str:
-    """
-    Extract and format the snippet text from a retrieved Document.
-
-    Args:
-        doc: A langchain.schema.Document.
-
-    Returns:
-        A clean string snippet for printing.
-    """
-    content: str = doc.page_content or ""
-    return content.strip().replace("\n", " ")
-
+    # build_chain() uses load_llama(use_lora=True) internally
+    return build_chain(kind="eval", store=store)
 
 if __name__ == "__main__":
-    # ─── Sample query for testing retrieval and generation ───────────────────
-    query: str = (
+    # ─── Query to compare ────────────────────────────────────────────────────────
+    query = (
         "Our startup produces mushroom-based leather. "
         "Could you critique our go-to-market plan?"
     )
 
-    # ─── 1) Build the LoRA-fine-tuned chain ───────────────────────────────────
-    try:
-        lora_chain: RetrievalQA = make_lora_chain(store="chroma")
-    except Exception as e:
-        logger.error(f"Aborting: {e}")
-        sys.exit(1)
+    # ─── 1) Build the LoRA-fine-tuned chain ─────────────────────────────────────
+    lora_chain = make_lora_chain(store="chroma")
 
-    # ─── 2) Extract the retriever from the LoRA chain ────────────────────────
+    # ─── 2) Extract the retriever from the LoRA chain ───────────────────────────
     retriever = lora_chain.retriever
 
-    # ─── 3) Build the "base" chain using the same retriever but no LoRA ──────
-    try:
-        base_chain: RetrievalQA = make_base_chain(retriever)
-    except Exception as e:
-        logger.error(f"Aborting: {e}")
-        sys.exit(1)
+    # ─── 3) Build the "base" chain using the same retriever but no LoRA ──────────
+    base_chain = make_base_chain(retriever)
 
-    # ─── 4) Retrieve the top-3 docs (identical for both models) ──────────────
-    try:
-        top_docs = retrieve_top_k(retriever, query, k=3)
-    except Exception as e:
-        logger.error(f"Aborting: {e}")
-        sys.exit(1)
+    # ─── 4) Retrieve the top-3 docs (identical for both models) ─────────────────
+    top_docs = retriever.invoke({"query": query, "k": 3})
 
-    # ─── 5) Print the top-3 retrieved snippets once ──────────────────────────
+    # ─── 5) Print the top-3 retrieved snippets once ──────────────────────────────
     print("\n" + "=" * 80)
     print("STEP 1: Top-3 retrieved snippets (shared by both models)")
     print("=" * 80)
     for i, doc in enumerate(top_docs, start=1):
-        snippet = format_snippet(doc)
+        snippet = doc.page_content.strip().replace("\n", " ")
         print(f"Snippet {i}: {snippet}\n")
 
-    # ─── 6) Generate and print the base-model response ───────────────────────
+    # ─── 6) Generate and print the base-model response ───────────────────────────
     print("\n" + "=" * 80)
     print("STEP 2: Base LLaMA-3 (no LoRA) response")
     print("=" * 80)
-    try:
-        base_result: Dict[str, Any] = base_chain.invoke({"query": query})
-        print(base_result.get("result", "").strip())
-    except Exception as e:
-        logger.error(f"Base chain invocation failed: {e}")
-        sys.exit(1)
+    base_result = base_chain.invoke({"query": query})
+    print(base_result["result"].strip())
 
-    # ─── 7) Generate and print the LoRA-fine-tuned response ──────────────────
+    # ─── 7) Generate and print the LoRA-fine-tuned response ──────────────────────
     print("\n" + "=" * 80)
     print("STEP 3: LoRA-Fine-Tuned LLaMA-3 response")
     print("=" * 80)
-    try:
-        lora_result: Dict[str, Any] = lora_chain.invoke({"query": query})
-        print(lora_result.get("result", "").strip())
-    except Exception as e:
-        logger.error(f"LoRA chain invocation failed: {e}")
-        sys.exit(1)
+    lora_result = lora_chain.invoke({"query": query})
+    print(lora_result["result"].strip())
 
     print("\n" + "=" * 80)
     print("Comparison complete.\n")
