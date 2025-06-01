@@ -11,8 +11,8 @@ trust_remote_code: true                                       # Allow model code
 stage: sft                                                    # Indicates we are performing supervised fine-tuning
 do_train: true                                                # Enable training phase
 finetuning_type: lora                                         # Use LoRA (Low-Rank Adaptation) for parameter-efficient fine-tuning
-lora_rank: 32                                                 # LoRA rank; smaller rank helps avoid overfitting on a small dataset (~28 examples)
-lora_alpha: 64                                                # LoRA scaling factor (alpha); higher alpha can improve stability
+lora_rank: 16                                                 # LoRA rank; smaller rank helps avoid overfitting on a small dataset (~28 examples)
+lora_alpha: 32                                                # LoRA scaling factor (alpha); higher alpha can improve stability
 lora_dropout: 0.01                                            # Dropout probability for LoRA layers to regularize fine-tuning
 lora_target: all                                              # Apply LoRA to all Linear layers in the model
 flash_attn: auto                                              # Automatically use FlashAttention if available on H100 GPUs
