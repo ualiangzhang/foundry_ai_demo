@@ -29,12 +29,11 @@ Note:
 import logging
 import sys
 from pathlib import Path
-from typing import List, Dict, Union, Any
+from typing import Any, List, Dict, Union
 
 import transformers
 from langchain_huggingface import HuggingFacePipeline
 from langchain.chains import RetrievalQA
-from langchain.schema import Document
 
 # ─── Add project root (one level up from tests/) to Python path ──────────────
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
@@ -56,9 +55,8 @@ logger = logging.getLogger(__name__)
 
 
 def make_base_chain(
-        retriever: Union[RetrievalQA, Any],
-        max_new_tokens: int = 512,
-        temperature: float = 0.0
+    retriever: Any,
+    max_new_tokens: int = 512
 ) -> RetrievalQA:
     """
     Load the base (no-LoRA) LLaMA-3 model and wrap it in a RetrievalQA chain.
@@ -66,7 +64,6 @@ def make_base_chain(
     Args:
         retriever: A LangChain Retriever (e.g., from Chroma or Qdrant).
         max_new_tokens: Maximum tokens to generate per call (default: 512).
-        temperature: Sampling temperature (default: 0.0 for deterministic output).
 
     Returns:
         A RetrievalQA chain that uses the base LLaMA-3 model.
@@ -82,16 +79,14 @@ def make_base_chain(
         logger.error(msg)
         raise RuntimeError(msg)
 
-    logger.info("Initializing HuggingFace text-generation pipeline (deterministic)...")
+    logger.info("Initializing HuggingFace text-generation pipeline (greedy)...")
     try:
         pipeline = transformers.pipeline(
-            task="text-generation",
+            "text-generation",
             model=base_model,
             tokenizer=base_tokenizer,
             max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            do_sample=False,
-            repetition_penalty=1.1,
+            # Removed temperature and do_sample to avoid invalid flags
         )
     except Exception as e:
         msg = f"Failed to create HF pipeline for base model: {e}"
@@ -141,10 +136,10 @@ def make_lora_chain(store: str = "chroma") -> RetrievalQA:
 
 
 def retrieve_top_k(
-        retriever: Any,
-        query: str,
-        k: int = 3
-) -> List[Document]:
+    retriever: Any,
+    query: str,
+    k: int = 3
+) -> List[Dict[str, Any]]:
     """
     Retrieve the top-k documents for a given query from the retriever.
 
@@ -154,19 +149,41 @@ def retrieve_top_k(
         k: Number of top documents to return (default: 3).
 
     Returns:
-        A list of Document objects with `page_content` and `metadata`.
+        A list of dictionaries, each representing a retrieved document.
 
     Raises:
         RuntimeError: If the retriever invocation fails.
     """
     logger.info(f"Retrieving top {k} documents for query: {query}")
     try:
-        docs: List[Document] = retriever.invoke({"query": query, "k": k})
+        docs = retriever.invoke({"query": query, "k": k})
         return docs
     except Exception as e:
         msg = f"Retriever invocation failed: {e}"
         logger.error(msg)
         raise RuntimeError(msg)
+
+
+def format_snippet(doc: Union[Dict[str, Any], Any]) -> str:
+    """
+    Extract and format the snippet text from a retrieved doc.
+
+    Args:
+        doc: A dictionary or Document object representing a retrieved document.
+
+    Returns:
+        A clean string snippet for printing.
+    """
+    # Some retrievers return a Document object with page_content; others return a dict
+    if hasattr(doc, "page_content"):
+        content = doc.page_content
+    elif isinstance(doc, dict):
+        # Chroma/Qdrant retrievers often return {'id':..., 'text':..., 'metadata':...}
+        content = doc.get("page_content") or doc.get("text") or ""
+    else:
+        content = str(doc)
+
+    return content.strip().replace("\n", " ")
 
 
 if __name__ == "__main__":
@@ -195,7 +212,7 @@ if __name__ == "__main__":
 
     # ─── 4) Retrieve the top-3 docs (identical for both models) ──────────────
     try:
-        top_docs: List[Document] = retrieve_top_k(retriever, query, k=3)
+        top_docs = retrieve_top_k(retriever, query, k=3)
     except Exception as e:
         logger.error(f"Aborting: {e}")
         sys.exit(1)
@@ -205,7 +222,7 @@ if __name__ == "__main__":
     print("STEP 1: Top-3 retrieved snippets (shared by both models)")
     print("=" * 80)
     for i, doc in enumerate(top_docs, start=1):
-        snippet: str = doc.page_content.strip().replace("\n", " ")
+        snippet = format_snippet(doc)
         print(f"Snippet {i}: {snippet}\n")
 
     # ─── 6) Generate and print the base-model response ───────────────────────
@@ -213,7 +230,7 @@ if __name__ == "__main__":
     print("STEP 2: Base LLaMA-3 (no LoRA) response")
     print("=" * 80)
     try:
-        base_result: Dict[str, str] = base_chain.invoke({"query": query})
+        base_result: Dict[str, Any] = base_chain.invoke({"query": query})
         print(base_result.get("result", "").strip())
     except Exception as e:
         logger.error(f"Base chain invocation failed: {e}")
@@ -224,7 +241,7 @@ if __name__ == "__main__":
     print("STEP 3: LoRA-Fine-Tuned LLaMA-3 response")
     print("=" * 80)
     try:
-        lora_result: Dict[str, str] = lora_chain.invoke({"query": query})
+        lora_result: Dict[str, Any] = lora_chain.invoke({"query": query})
         print(lora_result.get("result", "").strip())
     except Exception as e:
         logger.error(f"LoRA chain invocation failed: {e}")
