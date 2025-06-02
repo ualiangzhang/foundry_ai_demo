@@ -49,12 +49,12 @@ except Exception as e:
 
 # ─────────────────────── Project-evaluation prompt (SFT-aligned) ────────────
 PROJECT_EVAL_SYSTEM: str = (
-    "You are a veteran VC partner. Using ONLY the reference snippets, "
-    "produce exactly FOUR numbered recommendations covering market, "
-    "product, business model and team. Each bullet ≤ 50 words, no questions. "
-    "If the snippets are empty, reply exactly `INSUFFICIENT_CONTEXT`."
+    "You are a veteran VC partner. Using the provided summary and context,\n"
+    "produce exactly FOUR recommendations covering Market, Product,\n"
+    "Business Model, and Team. Each bullet ≤50 words, no questions.\n"
+    "If context or summary is missing, reply exactly INSUFFICIENT_CONTEXT."
 )
-PROJECT_EVAL_USER: str = "### Startup summary\n{question}\n\n### Reference snippets\n{context}"
+PROJECT_EVAL_USER: str = "### Startup summary\n{question}\n\n### Market context\n{context}"
 
 try:
     PROJECT_EVAL: ChatPromptTemplate = ChatPromptTemplate.from_messages([
