@@ -5,7 +5,7 @@ tests/test_rag.py
 Integration test to compare retrieval and response between the base LLaMA-3 model
 (no LoRA) and the LoRA-fine-tuned LLaMA-3 for a sample query. This test:
 
-1. Builds a RetrievalQA chain using the LoRA-fine-tuned LLaMA-3 (via build_chain).
+1. Builds a RetrievalQA chain using the LoRA-fine-tuned LLaMA-3 (via build_chain(kind="rag")).
 2. Extracts the retriever from that chain.
 3. Builds a “base” chain without LoRA using the same retriever.
 4. Retrieves the top-3 documents for a sample query and prints them once.
@@ -37,7 +37,7 @@ from src.rag.model_loader import load_llama
 from src.rag.prompts import PROJECT_EVAL
 
 import transformers
-from langchain_huggingface import HuggingFacePipeline
+from langchain_community.llms import HuggingFacePipeline
 from langchain.chains import RetrievalQA
 from langchain.schema import BaseRetriever
 
@@ -127,7 +127,8 @@ def make_lora_chain(store: str = "chroma") -> RetrievalQA:
     """
     logger.info(f"Building LoRA-fine-tuned chain using '{store}' store...")
     try:
-        lora_chain = build_chain(kind="eval", store=store)
+        # 改为 kind="rag"，确保返回的是 RetrievalQA 而非纯函数
+        lora_chain = build_chain(kind="rag", store=store)
     except Exception as e:
         msg = f"Failed to build LoRA chain: {e}"
         logger.error(msg)
@@ -151,7 +152,7 @@ def main() -> None:
         "Could you critique our go-to-market plan?"
     )
 
-    # 1) Build the LoRA-fine-tuned chain
+    # 1) Build the LoRA-fine-tuned chain (RetrievalQA)
     try:
         lora_chain: RetrievalQA = make_lora_chain(store="chroma")
     except RuntimeError:
