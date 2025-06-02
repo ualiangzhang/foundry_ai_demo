@@ -2,16 +2,15 @@
 """
 tests/test_rag.py
 
-Compare answers from base LLaMA-3 vs. LoRA-fine-tuned LLaMA-3
-using the new chain API:
+Compare the base LLaMA-3 (no-LoRA) with the LoRA-fine-tuned model on one query.
+Uses:
 
-• build_chain(kind="rag")  → RetrievalQA (has .retriever)
-• build_chain(kind="eval") → callable producing four bullets
+• build_chain(kind="rag")  → RetrievalQA (for .retriever)
+• build_chain(kind="eval") → callable   (returns {"result": …})
 """
 
 from __future__ import annotations
 
-import inspect
 import logging
 import sys
 from pathlib import Path
@@ -22,25 +21,24 @@ from langchain.chains import RetrievalQA
 from langchain.schema import BaseRetriever
 from langchain_community.llms import HuggingFacePipeline
 
-# ── add repo root to PYTHONPATH ──────────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+# ── path --------------------------------------------------------------------
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-# ── local imports (after path tweak) ─────────────────────────────────────────
+# ── local imports -----------------------------------------------------------
 from src.rag.chains import build_chain
 from src.rag.model_loader import load_llama
 
-# ── logging ──────────────────────────────────────────────────────────────────
+# ── logger ------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
-# helpers                                                                     #
+# Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 def _patch_eval_callable(
     eval_fn: Callable[[Dict[str, str]], Dict[str, Any]],
@@ -48,28 +46,18 @@ def _patch_eval_callable(
     new_llm: HuggingFacePipeline,
     new_retriever: BaseRetriever,
 ) -> None:
-    """
-    Replace the 'llm' and 'retriever' free vars captured in the closure of an
-    eval-callable produced by build_chain(kind="eval").
-    """
-    freevars = eval_fn.__code__.co_freevars         # tuple of names
-    cells = eval_fn.__closure__ or ()
-
-    mapping = dict(zip(freevars, cells))
-    if "llm" not in mapping or "retriever" not in mapping:
-        raise RuntimeError("Cannot monkey-patch eval_fn – variables missing")
-
-    # mutate cell contents
-    mapping["llm"].cell_contents = new_llm
-    mapping["retriever"].cell_contents = new_retriever
+    """Replace captured llm / retriever inside the eval closure."""
+    mapping = dict(zip(eval_fn.__code__.co_freevars, eval_fn.__closure__))
+    mapping["llm"].cell_contents = new_llm           # type: ignore
+    mapping["retriever"].cell_contents = new_retriever   # type: ignore
 
 
-def _make_base_eval(
+def make_base_eval(
     retriever: BaseRetriever,
     max_new_tokens: int = 512,
     temperature: float = 0.0,
-):
-    """Return an eval-callable that uses **base** LLaMA-3 weights."""
+) -> Callable[[Dict[str, str]], Dict[str, Any]]:
+    """Callable that executes the *eval* logic using **base** weights."""
     base_model, base_tok = load_llama(use_lora=False)
     pipe = transformers.pipeline(
         "text-generation",
@@ -88,7 +76,7 @@ def _make_base_eval(
 
 
 # --------------------------------------------------------------------------- #
-# main test                                                                   #
+# Main                                                                        #
 # --------------------------------------------------------------------------- #
 def main() -> None:
     query = (
@@ -98,36 +86,32 @@ def main() -> None:
         "minimizing environmental impact."
     )
 
-    # ── 1.  LoRA chains ------------------------------------------------------
-    lora_rag: RetrievalQA = build_chain(kind="rag", store="chroma")   # has retriever
+    # ---------- LoRA chains --------------------------------------------------
+    lora_rag: RetrievalQA = build_chain(kind="rag", store="chroma")
     retriever: BaseRetriever = lora_rag.retriever
+    lora_eval = build_chain(kind="eval", store="chroma")
 
-    lora_eval = build_chain(kind="eval", store="chroma")              # callable
+    # ---------- base chains --------------------------------------------------
+    base_eval = make_base_eval(retriever)
 
-    # ── 2.  Base chains ------------------------------------------------------
-    base_rag_llm, _ = load_llama(use_lora=False)  # just to ensure weights load
-    # we don't need the base_rag chain itself; we only need base_eval callable
-    base_eval = _make_base_eval(retriever)
-
-    # ── 3.  Display top-3 retrieved docs ------------------------------------
-    top_docs = retriever.get_relevant_documents(query)
+    # ---------- show docs ----------------------------------------------------
+    docs = retriever.get_relevant_documents(query)
     print("\n" + "=" * 80)
-    print("STEP 1 · Top-3 retrieved snippets")
+    print("Top-3 retrieved snippets")
     print("=" * 80)
-    for i, d in enumerate(top_docs, 1):
-        snippet = d.page_content.strip().replace("\n", " ")
-        print(f"Snippet {i}: {snippet}\n")
+    for i, d in enumerate(docs, 1):
+        print(f"[{i}] {d.page_content.strip().replace(chr(10), ' ')}\n")
 
-    # ── 4.  Base answer ------------------------------------------------------
+    # ---------- base answer --------------------------------------------------
     print("\n" + "=" * 80)
-    print("STEP 2 · Base LLaMA-3 (no LoRA)")
+    print("Base LLaMA-3 (no-LoRA) → four recommendations")
     print("=" * 80)
     base_out = base_eval({"question": query})
     print(base_out["result"].strip())
 
-    # ── 5.  LoRA answer ------------------------------------------------------
+    # ---------- LoRA answer --------------------------------------------------
     print("\n" + "=" * 80)
-    print("STEP 3 · LoRA-Fine-Tuned LLaMA-3")
+    print("LoRA-fine-tuned LLaMA-3 → four recommendations")
     print("=" * 80)
     lora_out = lora_eval({"question": query})
     print(lora_out["result"].strip())

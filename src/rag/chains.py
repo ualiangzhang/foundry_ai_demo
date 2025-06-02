@@ -25,13 +25,14 @@ import logging
 import random
 import re
 import time
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, Any
 
 import transformers
 from langchain.chains import LLMChain, RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_community.llms import HuggingFacePipeline
 from langchain.schema import BaseRetriever
+from langchain_core.prompt_values import ChatPromptValue
 
 # Reuse DuckDuckGo helper and context-generation instructions from the SFT script
 from scripts.generate_sft_examples import (
@@ -90,33 +91,33 @@ def _fetch_market_snippet(summary: str) -> Optional[str]:
     return None
 
 
+# -----------------------------------------------------------------------------
+# Summarise snippet → ~100-word context  (no deprecated LLMChain.run)
+# -----------------------------------------------------------------------------
 def _summarize_context(
     llm: HuggingFacePipeline,
     summary: str,
-    snippet: str
+    snippet: str,
 ) -> Optional[str]:
     """
-    Use the same LLaMA-3 model to convert snippet + summary into a ~100-word
-    market context. Follows the CONTEXT_GEN_SYS instructions from SFT.
+    Convert snippet + summary into a ~100-word market context. Uses llm.invoke
+    instead of the deprecated LLMChain.run.
     """
     template = (
-        CONTEXT_GEN_SYS
-        + "\n\nSummary: {summary}\n\nSnippet: {snippet}\n\nGenerate JSON as specified above."
+        f"{CONTEXT_GEN_SYS}\n\n"
+        f"Summary: {summary}\n\n"
+        f"Snippet: {snippet}\n\n"
+        "Generate JSON as specified above."
     )
-    prompt = PromptTemplate.from_template(template)
-    chain = LLMChain(llm=llm, prompt=prompt)
-
     for _ in range(3):
-        raw_output = chain.run({"summary": summary, "snippet": snippet}).strip()
+        raw_output: str = llm.invoke(template).strip()
         try:
-            parsed = json.loads(raw_output)
-            context = parsed.get("context", "").strip()
-            wc = len(re.findall(r"\S+", context))
+            context = json.loads(raw_output).get("context", "").strip()
+            wc = len(re.findall(r'\S+', context))
             if 80 <= wc <= 140:
                 return context
         except Exception:
             pass
-
     return None
 
 
@@ -163,51 +164,41 @@ def build_chain(
     logger.info(f"build_chain(kind={kind}, store={store})")
     llm = _make_llm()
 
-    # -------------------------------------------- "eval" chain
+    # -----------------------------------------------------------------------------
+    # eval branch inside build_chain  (updated to llm.invoke & "result" key)
+    # -----------------------------------------------------------------------------
     if kind == "eval":
         retriever = _build_retriever(store)
 
-        def _eval_run(inputs: Dict[str, str]) -> Dict[str, str]:
+        def _eval_run(inputs: Dict[str, str]) -> Dict[str, Any]:
             summary = inputs.get("question", "").strip()
             if not summary:
-                return {
-                    "error": "Missing summary",
-                    "recommendations": "INSUFFICIENT_CONTEXT"
-                }
+                return {"result": "INSUFFICIENT_CONTEXT", "error": "missing summary"}
 
             snippet = _fetch_market_snippet(summary)
             if not snippet:
-                return {
-                    "error": "No numeric snippet found",
-                    "recommendations": "INSUFFICIENT_CONTEXT"
-                }
+                return {"result": "INSUFFICIENT_CONTEXT", "error": "no numeric snippet"}
 
             context = _summarize_context(llm, summary, snippet)
             if not context:
-                return {
-                    "error": "Failed to build market context",
-                    "recommendations": "INSUFFICIENT_CONTEXT"
-                }
+                return {"result": "INSUFFICIENT_CONTEXT", "error": "context build failed"}
 
-            # Generate four VC recommendations
-            rec_messages = PROJECT_EVAL.format_prompt(
-                question=summary,
-                context=context
-            ).to_messages()
-            recommendations = llm.generate(rec_messages)[0].text.strip()
+            # four recommendations
+            pv: ChatPromptValue = PROJECT_EVAL.format_prompt(
+                question=summary, context=context
+            )
+            rec_text: str = llm.invoke(pv.to_string()).strip()
 
-            # Retrieve top-3 docs for debugging/reference
-            docs = retriever.get_relevant_documents(summary)
-            docs_texts = [doc.page_content for doc in docs[:3]]
+            docs_text = [d.page_content for d in retriever.get_relevant_documents(summary)]
 
             return {
-                "result": recommendations,
+                "result": rec_text,
                 "context": context,
                 "snippet": snippet,
-                "docs": docs_texts,
+                "docs": docs_text,
             }
 
-        logger.info("Built DuckDuckGo-based eval chain.")
+        logger.info("Built DuckDuckGo eval callable.")
         return _eval_run
 
     # ----------------------- "pitch" or "rag" use RetrievalQA
