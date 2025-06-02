@@ -131,7 +131,7 @@ def main() -> None:
                     model=model,
                     tokenizer=tokenizer,
                     max_new_tokens=512,
-                    temperature=0.2,
+                    temperature=0.8,
                     do_sample=True,
                     repetition_penalty=1.1,
                 )
