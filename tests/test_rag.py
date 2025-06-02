@@ -2,11 +2,12 @@
 """
 tests/test_rag.py
 
-Compare the base LLaMA-3 (no-LoRA) with the LoRA-fine-tuned model on one query.
-Uses:
-
-• build_chain(kind="rag")  → RetrievalQA (for .retriever)
-• build_chain(kind="eval") → callable   (returns {"result": …})
+Demonstrates the LoRA-fine-tuned LLaMA-3 model on a single query.
+Steps:
+  1. Build a RetrievalQA chain to obtain a shared retriever.
+  2. Build the eval callable (four recommendations) using LoRA weights only.
+  3. Output the top-3 retrieved documents.
+  4. Display the LoRA model’s input prompt and its resulting output.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Callable
+from typing import Any, Callable, Dict, List
 
 import transformers
 from langchain.chains import RetrievalQA
@@ -28,8 +29,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # ── Local imports ────────────────────────────────────────────────────────────
 from src.rag.chains import build_chain
 from src.rag.model_loader import load_llama
+from src.rag.prompts import PROJECT_EVAL
+from src.rag.chains import _build_retriever  # noqa: WPS430
 
-# ── Logger ───────────────────────────────────────────────────────────────────
+# ── Logger configuration ─────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -37,114 +40,101 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
-def _patch_eval_callable(
-    eval_fn: Callable[[Dict[str, str]], Dict[str, Any]],
-    *,
-    new_llm: HuggingFacePipeline,
-    new_retriever: BaseRetriever,
-) -> None:
+def _extract_prompt_and_response(
+        llm_pipeline: HuggingFacePipeline,
+        summary: str,
+        context: str,
+) -> tuple[str, str]:
     """
-    Replace captured 'llm' and 'retriever' inside the eval closure
-    of a build_chain(kind="eval") callable.
+    Build the input prompt for PROJECT_EVAL and invoke the LLM pipeline.
+
+    Args:
+        llm_pipeline: A HuggingFacePipeline instance wrapping the LoRA model.
+        summary: The startup idea summary to include as "question".
+        context: The market context to include as "context".
+
+    Returns:
+        A tuple containing:
+            - The full text prompt sent to the model as a string.
+            - The model's raw textual output as a string.
     """
-    freevars = eval_fn.__code__.co_freevars
-    cells = eval_fn.__closure__ or []
-    mapping = dict(zip(freevars, cells))
-    if "llm" in mapping and "retriever" in mapping:
-        mapping["llm"].cell_contents = new_llm           # type: ignore
-        mapping["retriever"].cell_contents = new_retriever   # type: ignore
-    else:
-        raise RuntimeError("Failed to patch eval callable: missing free variables")
+    # Format the ChatPromptValue for PROJECT_EVAL
+    prompt_value = PROJECT_EVAL.format_prompt(question=summary, context=context)
+    # Convert to a single string (system + user) for the pipeline
+    prompt_str = prompt_value.to_string()
+    # Invoke the LLM pipeline and capture raw output
+    raw_output = llm_pipeline.invoke(prompt_str).strip()
+    return prompt_str, raw_output
 
 
-def make_base_eval(
-    retriever: BaseRetriever,
-    max_new_tokens: int = 512,
-    temperature: float = 0.0,
-) -> Callable[[Dict[str, str]], Dict[str, Any]]:
-    """
-    Return a callable that implements the 'eval' logic using base (no-LoRA) weights.
-
-    Steps inside:
-      1. build_chain(kind="eval", store="chroma") → an eval-callable
-      2. Monkey-patch its closure so 'llm' uses base LLaMA-3 and
-         'retriever' is the shared retriever.
-    """
-    base_model, base_tok = load_llama(use_lora=False)
-    pipe = transformers.pipeline(
-        "text-generation",
-        model=base_model,
-        tokenizer=base_tok,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-        do_sample=False,
-        repetition_penalty=1.1,
-    )
-    base_llm = HuggingFacePipeline(pipeline=pipe)
-
-    base_eval = build_chain(kind="eval", store="chroma")  # returns a callable
-    _patch_eval_callable(base_eval, new_llm=base_llm, new_retriever=retriever)
-    return base_eval
-
-
-# --------------------------------------------------------------------------- #
-# Main                                                                        #
-# --------------------------------------------------------------------------- #
 def main() -> None:
     """
-    1. Build the LoRA-fine-tuned eval callable and the rag retriever.
-    2. Build the base eval callable (monkey-patched) with the same retriever.
-    3. Print top-3 docs (shared).
-    4. Print four-bullet recommendations from both chains.
+    1. Instantiate RetrievalQA with LoRA chain to obtain shared retriever.
+    2. Instantiate the eval callable (LoRA-based) to produce four recommendations.
+    3. Print the top-3 retrieved documents from the retriever.
+    4. Generate and display the LoRA prompt and the model’s output.
     """
-
-    # Use a query that is likely to yield a numeric snippet when combined
-    # with "market size 2025" etc.
+    # Define a test query focused on VR fitness
     query = (
         "Develop a VR fitness platform with real-time coaching features "
         "and personalized workout plans to improve user engagement."
     )
 
-    # ---------- 1. LoRA chains ------------------------------------------------
-    # build a RetrievalQA purely to get .retriever
+    # Step 1: Build LoRA RetrievalQA chain to extract retriever only
     lora_rag: RetrievalQA = build_chain(kind="rag", store="chroma")
     retriever: BaseRetriever = lora_rag.retriever
 
-    # build the eval callable (four bullets) using LoRA weights
-    lora_eval = build_chain(kind="eval", store="chroma")
+    # Step 2: Build the eval callable using LoRA weights
+    lora_eval: Callable[[Dict[str, str]], Dict[str, Any]] = build_chain(
+        kind="eval",
+        store="chroma",
+    )
 
-    # ---------- 2. Base eval callable -----------------------------------------
-    # monkey-patch the eval closure so it uses base LLaMA-3 weights + same retriever
-    base_eval = make_base_eval(retriever)
-
-    # ---------- 3. Show top-3 retrieved docs ----------------------------------
-    docs = retriever.get_relevant_documents(query)
+    # Step 3: Retrieve and print top-3 documents
+    top_docs = retriever.get_relevant_documents(query)
     print("\n" + "=" * 80)
-    print("STEP 1  ·  Top-3 retrieved snippets (shared by both models)")
+    print("STEP 1 · Top-3 Retrieved Documents")
     print("=" * 80)
-    for idx, d in enumerate(docs[:3], start=1):
-        text = d.page_content.strip().replace("\n", " ")
-        print(f"[{idx}] {text}\n")
+    for idx, doc in enumerate(top_docs[:3], start=1):
+        # Flatten newlines for display
+        doc_text: str = doc.page_content.strip().replace("\n", " ")
+        print(f"[{idx}] {doc_text}\n")
 
-    # ---------- 4. Base model answer ------------------------------------------
+    # Step 4: Generate model input and output using LoRA eval callable
+    # First, run the eval callable to get result, context, snippet, docs
+    eval_result = lora_eval({"question": query})
+
+    # Extract context and snippet from eval_result for prompt construction
+    context_text: str = eval_result.get("context", "")
+    snippet_text: str = eval_result.get("snippet", "")
+
+    # Build the LoRA input prompt and capture the raw model output
+    prompt_text, model_output = _extract_prompt_and_response(
+        llm_pipeline=HuggingFacePipeline(
+            pipeline=transformers.pipeline(
+                "text-generation",
+                model=load_llama(use_lora=True)[0],
+                tokenizer=load_llama(use_lora=True)[1],
+                max_new_tokens=512,
+                temperature=0.2,
+                do_sample=True,
+                repetition_penalty=1.1,
+            )
+        ),
+        summary=query,
+        context=context_text,
+    )
+
+    # Display the prompt and the final output
     print("\n" + "=" * 80)
-    print("STEP 2  ·  Base LLaMA-3 (no-LoRA) → four recommendations")
+    print("STEP 2 · LLM Model Input Prompt")
     print("=" * 80)
-    base_out = base_eval({"question": query})
-    print(base_out["result"].strip())
+    print(prompt_text + "\n")
 
-    # ---------- 5. LoRA model answer ------------------------------------------
     print("\n" + "=" * 80)
-    print("STEP 3  ·  LoRA-Fine-Tuned LLaMA-3 → four recommendations")
+    print("STEP 3 · LLM Model Output")
     print("=" * 80)
-    lora_out = lora_eval({"question": query})
-    print(lora_out["result"].strip())
-
-    print("\n" + "=" * 80)
-    print("Comparison complete.\n")
+    print(model_output.strip() + "\n")
 
 
 if __name__ == "__main__":
