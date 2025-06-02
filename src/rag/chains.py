@@ -54,9 +54,13 @@ logger = logging.getLogger(__name__)
 # Configuration
 # -----------------------------------------------------------------------------
 MARKET_KEYWORDS = [
-    "market size 2025", "Total Addressable Market",
-    "Compound Annual Growth Rate", "market size 2025", "Total Addressable Market", "Compound Annual Growth Rate",
-    "Annual Growth Rate", "Market Revenue", "user growth statistics", "market forcast"
+    "market size 2025",
+    "Total Addressable Market 2025",
+    "market forecast 2025",
+    "Compound Annual Growth Rate 2025",
+    "Annual Growth Rate 2025",
+    "Market Revenue 2025",
+    "user growth statistics 2025",
 ]
 
 
@@ -188,22 +192,39 @@ def build_chain(
 
         def _eval_run(inputs: Dict[str, str]) -> Dict[str, Any]:
             summary = inputs.get("question", "").strip()
+            # If summary is missing
             if not summary:
-                return {"result": "INSUFFICIENT_CONTEXT", "error": "missing summary"}
+                return {
+                    "result": "No summary provided",
+                    "context": "",
+                    "snippet": "",
+                    "docs": [],
+                }
 
+            # Attempt to fetch snippet
             snippet = _fetch_market_snippet(summary)
             if not snippet:
-                logger.info("222." + snippet)
-                return {"result": "INSUFFICIENT_CONTEXT", "error": "no numeric snippet"}
+                return {
+                    "result": "No snippet found",
+                    "context": "",
+                    "snippet": "",
+                    "docs": [],
+                }
 
+            # Attempt to build context
             context = _summarize_context(llm, summary, snippet)
             if not context:
-                logger.info("333.")
-                return {"result": "INSUFFICIENT_CONTEXT", "error": "context build failed"}
+                return {
+                    "result": "No context found",
+                    "context": "",
+                    "snippet": snippet,
+                    "docs": [],
+                }
 
-            # four recommendations
+            # Generate four recommendations
             pv: ChatPromptValue = PROJECT_EVAL.format_prompt(
-                question=summary, context=context
+                question=summary,
+                context=context,
             )
             rec_text: str = llm.invoke(pv.to_string()).strip()
 
