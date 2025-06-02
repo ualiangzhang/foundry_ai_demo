@@ -173,14 +173,17 @@ def build_chain(
         def _eval_run(inputs: Dict[str, str]) -> Dict[str, Any]:
             summary = inputs.get("question", "").strip()
             if not summary:
+                logger.info("111.")
                 return {"result": "INSUFFICIENT_CONTEXT", "error": "missing summary"}
 
             snippet = _fetch_market_snippet(summary)
             if not snippet:
+                logger.info("222.")
                 return {"result": "INSUFFICIENT_CONTEXT", "error": "no numeric snippet"}
 
             context = _summarize_context(llm, summary, snippet)
             if not context:
+                logger.info("333.")
                 return {"result": "INSUFFICIENT_CONTEXT", "error": "context build failed"}
 
             # four recommendations
