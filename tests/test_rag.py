@@ -26,9 +26,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # ── Core imports ─────────────────────────────────────────────────────────────
-from src.rag.chains import build_chain        # LoRA chain factory
-from src.rag.model_loader import load_llama   # base model loader
-from src.rag.prompts import RAG_WRAPPER       # **same prompt for both chains**
+from src.rag.chains import build_chain  # LoRA chain factory
+from src.rag.model_loader import load_llama  # base model loader
+from src.rag.prompts import RAG_WRAPPER  # **same prompt for both chains**
 
 import transformers
 from langchain_community.llms import HuggingFacePipeline
@@ -48,9 +48,9 @@ logger = logging.getLogger(__name__)
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 def make_base_chain(
-    retriever: BaseRetriever,
-    max_new_tokens: int = 512,
-    temperature: float = 0.0,
+        retriever: BaseRetriever,
+        max_new_tokens: int = 512,
+        temperature: float = 0.0,
 ) -> RetrievalQA:
     """Return a RetrievalQA chain that uses the *base* (no-LoRA) weights."""
     logger.info("Loading base LLaMA-3 model (no LoRA)…")
@@ -87,8 +87,9 @@ def make_lora_chain(store: str = "chroma") -> RetrievalQA:
 # --------------------------------------------------------------------------- #
 def main() -> None:
     query = (
-        "Our startup produces mushroom-based leather. "
-        "Could you critique our go-to-market plan?"
+        "Develop a sustainable leather alternative by cultivating and processing mycelium-based materials into "
+        "high-quality, biodegradable leather substitutes for fashion and upholstery, reducing reliance on animal hides "
+        "and minimizing environmental impact."
     )
 
     # 1. LoRA chain
