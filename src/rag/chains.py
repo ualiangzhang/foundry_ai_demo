@@ -113,6 +113,7 @@ def _summarize_context(
         raw_output: str = llm.invoke(template).strip()
         try:
             context = json.loads(raw_output).get("context", "").strip()
+            logger.info("111." + context)
             wc = len(re.findall(r'\S+', context))
             if 80 <= wc <= 140:
                 return context
@@ -173,12 +174,11 @@ def build_chain(
         def _eval_run(inputs: Dict[str, str]) -> Dict[str, Any]:
             summary = inputs.get("question", "").strip()
             if not summary:
-                logger.info("111.")
                 return {"result": "INSUFFICIENT_CONTEXT", "error": "missing summary"}
 
             snippet = _fetch_market_snippet(summary)
             if not snippet:
-                logger.info("222.")
+                logger.info("222." + snippet)
                 return {"result": "INSUFFICIENT_CONTEXT", "error": "no numeric snippet"}
 
             context = _summarize_context(llm, summary, snippet)
