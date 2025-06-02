@@ -100,8 +100,9 @@ def _summarize_context(
         snippet: str,
 ) -> Optional[str]:
     """
-    Convert snippet + summary into a ~100-word market context. Uses llm.invoke
-    instead of the deprecated LLMChain.run.
+    Convert snippet + summary into a market context by invoking the LLM.
+    If the LLM’s output contains extra text around the JSON, extract the JSON
+    block. On any error or missing structure, log the exception and return None.
     """
     template = (
         f"{CONTEXT_GEN_SYS}\n\n"
@@ -109,19 +110,30 @@ def _summarize_context(
         f"Snippet: {snippet}\n\n"
         "Generate JSON as specified above."
     )
+
     for _ in range(3):
-        logger.info("444." + snippet)
-        raw_output: str = llm.invoke(template).strip()
-        logger.info("555." + raw_output)
+        raw_output = llm.invoke(template).strip()
+
+        # Attempt to locate the outermost JSON object in raw_output
+        start_idx = raw_output.find("{")
+        end_idx = raw_output.rfind("}")
+        if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
+            logger.error(f"JSON braces not found or malformed in output: {raw_output}")
+            continue
+
+        json_str = raw_output[start_idx: end_idx + 1]
         try:
-            context = json.loads(raw_output).get("context", "").strip()
-            logger.info("666." + raw_output)
-            wc = len(re.findall(r'\S+', context))
-            logger.info("777." + str(wc))
-            if 80 <= wc <= 140:
-                return context
-        except Exception:
-            pass
+            parsed = json.loads(json_str)
+            context = parsed.get("context", "").strip()
+            if not context:
+                logger.error(f"'context' key missing or empty in parsed JSON: {json_str}")
+                continue
+            return context
+
+        except Exception as e:
+            logger.error(f"Failed to parse JSON from LLM output: {e}; raw_output: {raw_output}")
+            continue
+
     return None
 
 
