@@ -1,24 +1,36 @@
 # src/ui/app.py
 
+"""Streamlit UI for three LLM chains: Evaluator, Pitch-deck, Generic RAG."""
+
+from __future__ import annotations
+
+###############################################################################
+# Early monkey-patch: provide a dummy torch.classes module so Streamlit’s
+# file-watcher never touches the lazy C++ proxy inside PyTorch.                #
+###############################################################################
+import types
+import sys
 import os
 
-# ── Prevent Streamlit’s watcher from inspecting torch internals ────────────────
+# Create a fake torch.classes module with an empty __path__
+dummy_torch_classes = types.ModuleType("torch.classes")
+dummy_torch_classes.__path__ = []  # type: ignore[attr-defined]
+sys.modules["torch.classes"] = dummy_torch_classes
+
+# Tell Streamlit’s watchdog to ignore anything under "torch"
 os.environ["STREAMLIT_WATCHDOG_IGNORE_DIRS"] = "torch"
 os.environ["STREAMLIT_WATCHDOG_IGNORE_MODULES"] = "torch"
 
+###############################################################################
+# Standard imports                                                             #
+###############################################################################
 import logging
-import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 import streamlit as st
-
-# ── Disable Streamlit’s file-watcher entirely to avoid torch-related errors ───
-st.set_option("server.fileWatcherType", "none")
-
 import transformers
 from langchain.chains import RetrievalQA
-from langchain.schema import BaseRetriever
 from langchain_community.llms import HuggingFacePipeline
 
 # ── Ensure project root is on PYTHONPATH so that src modules can be imported ──
@@ -26,157 +38,139 @@ from langchain_community.llms import HuggingFacePipeline
 #   Path(__file__).parent           -> <project_root>/src/ui
 #   Path(__file__).parent.parent    -> <project_root>/src
 #   Path(__file__).parent.parent.parent -> <project_root>
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent  # type: ignore
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.rag.chains import build_chain  # noqa: E402
 from src.rag.model_loader import load_llama  # noqa: E402
-from src.rag.prompts import RAG_WRAPPER, PROJECT_EVAL, PITCH_DECK  # noqa: E402
 
-
-# ── Configure module-level logger ─────────────────────────────────────────────
+###############################################################################
+# Logger configuration                                                         #
+###############################################################################
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-
+###############################################################################
+# Build & cache the three chains                                               #
+###############################################################################
 @st.cache_resource
 def get_chains() -> Dict[str, Any]:
     """
-    Initialize and cache three chain variants: 'eval', 'pitch', and 'rag'.
+    Return cached instances of the eval, pitch, and rag chains.
 
-    Returns:
-        A dictionary mapping:
-        - "eval" to a callable that performs DuckDuckGo + LLaMA-3 → VC recommendations.
-        - "pitch" to a RetrievalQA chain for generating pitch-deck bullets.
-        - "rag" to a RetrievalQA chain for generic RAG QA.
+    - "eval": Callable that runs DuckDuckGo + LLaMA-3 summarization → VC recommendations.
+    - "pitch": RetrievalQA chain for pitch-deck bullet generation.
+    - "rag": RetrievalQA chain for generic RAG QA.
     """
-    eval_chain = build_chain(kind="eval", store="chroma")
-    pitch_chain = build_chain(kind="pitch", store="chroma")
-    rag_chain = build_chain(kind="rag", store="chroma")
-    return {"eval": eval_chain, "pitch": pitch_chain, "rag": rag_chain}
+    return {
+        "eval": build_chain(kind="eval", store="chroma"),
+        "pitch": build_chain(kind="pitch", store="chroma"),
+        "rag": build_chain(kind="rag", store="chroma"),
+    }
 
 
 chains: Dict[str, Any] = get_chains()
 
-# Create Streamlit tabs for the three functionalities
+###############################################################################
+# Streamlit UI                                                                 #
+###############################################################################
 tab1, tab2, tab3 = st.tabs(["Evaluator", "Pitch-deck", "Generic RAG"])
 
-
-# ─────────────────────────── Tab 1: Evaluator ────────────────────────────────
+# ────────────────────────────── Tab 1: Evaluator ────────────────────────────
 with tab1:
     st.header("Startup Evaluator")
+    summary: str = st.text_area("Enter your startup summary (idea)", height=100)
 
-    summ: str = st.text_area(
-        label="Enter your startup summary (idea)",
-        height=100,
-        key="evaluator_summary",
-    )
-
-    if st.button("Evaluate Startup", key="evaluate_button"):
-        if not summ.strip():
-            st.error("Please enter a non-empty startup summary.")
+    if st.button("Evaluate Startup"):
+        if not summary.strip():
+            st.error("Please enter a non-empty summary.")
         else:
             try:
-                # The eval chain expects a dict with "question": summary
-                eval_input: Dict[str, str] = {"question": summ}
-                out: Dict[str, Any] = chains["eval"](eval_input)
+                result: Dict[str, Any] = chains["eval"]({"question": summary})
 
                 # 1. Display top-3 retrieved documents, if any
-                docs: List[str] = out.get("docs", [])
                 st.subheader("Top-3 Retrieved Documents")
+                docs: List[str] = result.get("docs", [])
                 if docs:
-                    for idx, doc_text in enumerate(docs, start=1):
-                        # Flatten newlines for readability
-                        safe_text: str = doc_text.strip().replace("\n", " ")
-                        st.markdown(f"**Doc {idx}:** {safe_text}")
+                    for i, doc in enumerate(docs, start=1):
+                        # Replace newline characters with spaces
+                        safe_text: str = doc.strip().replace("\n", " ")
+                        st.markdown("**Doc {}:** {}".format(i, safe_text))
                 else:
                     st.info("No documents retrieved for this summary.")
 
                 # 2. Display the DuckDuckGo snippet (numeric fact), if available
-                snippet: str = out.get("snippet", "")
                 st.subheader("Market Snippet")
+                snippet: str = result.get("snippet", "")
                 if snippet:
                     st.write(snippet)
                 else:
                     st.info("No snippet with numeric data found.")
 
                 # 3. Display the ~100-word market context, if generated
-                context: str = out.get("context", "")
                 st.subheader("Market Context (~100 words)")
+                context: str = result.get("context", "")
                 if context:
                     st.write(context)
                 else:
                     st.info("No context generated by the model.")
 
                 # 4. Display the four VC recommendations
-                recommendations: str = out.get("result", "")
                 st.subheader("VC Recommendations")
+                recommendations: str = result.get("result", "")
                 if recommendations:
                     st.write(recommendations)
                 else:
                     st.info("No recommendations generated by the model.")
 
-            except Exception as e:
-                logger.error(f"Evaluator chain failed: {e}")
-                st.error(f"Evaluation failed: {e}")
+            except Exception as exc:
+                logger.exception("Evaluator failed: %s", exc)
+                st.error(f"Evaluation failed: {exc}")
 
-
-# ──────────────────────── Tab 2: Pitch-deck ─────────────────────────────────
+# ─────────────────────────── Tab 2: Pitch-deck ──────────────────────────────
 with tab2:
-    st.header("Pitch Deck Generator")
+    st.header("Pitch-deck Generator")
+    deck_summary: str = st.text_area("Startup summary for deck generation", height=100)
 
-    summ_deck: str = st.text_area(
-        label="Enter your startup summary for deck generation",
-        height=100,
-        key="pitch_deck_summary",
-    )
-
-    if st.button("Generate Pitch Deck", key="deck_button"):
-        if not summ_deck.strip():
-            st.error("Please enter a non-empty summary for pitch deck.")
+    if st.button("Generate Pitch-deck"):
+        if not deck_summary.strip():
+            st.error("Please enter a non-empty summary.")
         else:
             try:
-                pitch_chain: Any = chains["pitch"]
-                # Try the .run() API; if it fails, fall back to dict input
+                chain: RetrievalQA = chains["pitch"]
                 try:
-                    deck_output: str = pitch_chain.run(summ_deck)  # type: ignore
+                    deck_output: str = chain.run(deck_summary)  # type: ignore[attr-defined]
                 except Exception:
-                    deck_output = pitch_chain({"query": summ_deck})  # type: ignore
+                    deck_output = chain({"query": deck_summary})  # type: ignore[attr-defined]
 
-                st.subheader("Pitch Deck Bullets")
+                st.subheader("Pitch-deck Bullets")
                 if deck_output:
                     st.write(deck_output)
                 else:
                     st.info("No output generated for pitch deck.")
 
-            except Exception as e:
-                logger.error(f"Pitch-deck chain failed: {e}")
-                st.error(f"Pitch-deck generation failed: {e}")
+            except Exception as exc:
+                logger.exception("Pitch-deck failed: %s", exc)
+                st.error(f"Pitch-deck generation failed: {exc}")
 
-
-# ─────────────────────────── Tab 3: Generic RAG ───────────────────────────────
+# ─────────────────────────── Tab 3: Generic RAG ──────────────────────────────
 with tab3:
     st.header("Generic RAG QA")
+    question: str = st.text_input("Ask any question about your startup or market")
 
-    question: str = st.text_input(
-        label="Ask any question about your startup or market",
-        key="rag_question",
-    )
-
-    if st.button("Get Answer", key="rag_button"):
+    if st.button("Get Answer"):
         if not question.strip():
             st.error("Please enter a non-empty question.")
         else:
             try:
-                rag_chain: Any = chains["rag"]
-                # First try the .run() API; fallback to dict input if needed
+                chain: RetrievalQA = chains["rag"]
                 try:
-                    answer: str = rag_chain.run(question)  # type: ignore
+                    answer: str = chain.run(question)  # type: ignore[attr-defined]
                 except Exception:
-                    answer = rag_chain({"query": question})  # type: ignore
+                    answer = chain({"query": question})  # type: ignore[attr-defined]
 
                 st.subheader("Answer")
                 if answer:
@@ -184,6 +178,6 @@ with tab3:
                 else:
                     st.info("No answer returned by the model.")
 
-            except Exception as e:
-                logger.error(f"RAG chain failed: {e}")
-                st.error(f"RAG query failed: {e}")
+            except Exception as exc:
+                logger.exception("RAG failed: %s", exc)
+                st.error(f"RAG query failed: {exc}")
