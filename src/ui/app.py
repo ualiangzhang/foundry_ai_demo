@@ -2,98 +2,81 @@
 """
 Streamlit UI for the Startup Evaluator chain.
 
-Changelog
----------
-2025-06-02  • Remove Market-context display.
-           • Extend post-processing to (a) drop all prompt scaffolding,
-             (b) cut content preceding the first 'Market:' bullet,
-             (c) strip 'INSUFFICIENT_CONTEXT'.
+2025-06-02
+* Strip every instruction line before the first bullet (robust regex).
+* Escape underscores to prevent unintended italics in Streamlit Markdown.
 """
 
 from __future__ import annotations
+import types, sys, os, logging, re
+from pathlib import Path
+from typing import Any, Dict, List
+import streamlit as st
 
-###############################################################################
-# Early monkey-patch to hide PyTorch internals from Streamlit’s watchdog      #
-###############################################################################
-import types, sys, os
+# ── Watchdog monkey-patch for PyTorch ─────────────────────────────────────────
 _dummy = types.ModuleType("torch.classes"); _dummy.__path__ = []  # type: ignore[attr-defined]
 sys.modules["torch.classes"] = _dummy
 os.environ["STREAMLIT_WATCHDOG_IGNORE_DIRS"] = "torch"
 os.environ["STREAMLIT_WATCHDOG_IGNORE_MODULES"] = "torch"
 
-###############################################################################
-# Standard imports                                                            #
-###############################################################################
-import logging, re
-from pathlib import Path
-from typing import Any, Dict, List
-
-import streamlit as st
-
 st.set_page_config(page_title="Startup Evaluator", layout="centered")
 
-###############################################################################
-# PYTHONPATH fix so `src.*` imports work                                      #
-###############################################################################
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
-
 from src.rag.chains import build_chain  # noqa: E402
 
-###############################################################################
-# Logger                                                                      #
-###############################################################################
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-###############################################################################
-# Helpers                                                                     #
-###############################################################################
+# ───────────────────────────── Helper ────────────────────────────────────────
 def postprocess_recommendations(raw: str) -> str:
     """
-    Return only the four cleaned recommendation bullets.
+    Return just the four clean recommendation bullets.
 
-    1. Drop lines starting with 'System:' or 'Human:'.
-    2. Remove the token 'INSUFFICIENT_CONTEXT' if present.
-    3. Cut everything *before* the first 'Market:' bullet.
-    4. Trim trailing hashtags on the 'Team:' bullet.
+    Steps
+    -----
+    1. Remove every line that starts with System: or Human:
+    2. Discard 'INSUFFICIENT_CONTEXT' if it appears.
+    3. Drop everything *before* the first bullet that begins with 'Market:'.
+       Handles bullets like '- Market:', '* Market:', '• Market:'.
+    4. Trim anything after the first '#' on the Team bullet.
+    5. Escape underscores so Streamlit doesn't create italics.
     """
-    # Normalise newlines
     txt = raw.replace("\r\n", "\n")
 
     # 1 ▸ remove scaffolding lines
     txt = "\n".join(
         ln for ln in txt.splitlines()
-        if not re.match(r"^\s*(System|Human):", ln, flags=re.I)
+        if not re.match(r"^\s*(System|Human)\s*:", ln, flags=re.I)
     )
 
-    # 2 ▸ drop INSUFFICIENT_CONTEXT
+    # 2 ▸ drop literal token
     txt = txt.replace("INSUFFICIENT_CONTEXT", "")
 
-    # 3 ▸ keep from first 'Market:' onward
-    m = re.search(r"(?im)^\s*Market:\s*", txt)
+    # 3 ▸ keep from the first Market bullet onwards
+    bullet_pat = re.compile(r"^[\s\-\*\u2022]*Market\s*:", re.I | re.M)
+    m = bullet_pat.search(txt)
     if m:
         txt = txt[m.start():]
 
-    # 4 ▸ cut hashtags after Team bullet
+    # 4 ▸ strip hashtags after Team bullet
     txt = re.sub(r"(Team:\s*.+?)(?:\s*#.*)$",
-                 r"\1", txt, flags=re.I | re.DOTALL)
+                 r"\1", txt, flags=re.I | re.S)
+
+    # 5 ▸ escape underscores
+    txt = txt.replace("_", r"\_")
 
     return txt.strip()
 
-###############################################################################
-# Cache the evaluation chain                                                  #
-###############################################################################
+# ─────────────────────── Cache eval chain ────────────────────────────────────
 @st.cache_resource
 def get_eval_chain() -> Any:
     return build_chain(kind="eval", store="chroma")
 
-eval_chain: Any = get_eval_chain()
+eval_chain = get_eval_chain()
 
-###############################################################################
-# UI                                                                          #
-###############################################################################
+# ───────────────────────────── UI ────────────────────────────────────────────
 st.title("🚀 Startup Evaluator")
 
 summary: str = st.text_area(
@@ -120,7 +103,7 @@ if st.button("Evaluate Startup"):
             if not output.get("docs"):
                 st.info("No similar startup examples retrieved.")
 
-            # 2 ▸ VC recommendations (only cleaned bullets)
+            # 2 ▸ VC recommendations (cleaned)
             st.subheader("💡 VC Recommendations")
             recs = postprocess_recommendations(output.get("result", ""))
             if recs:
