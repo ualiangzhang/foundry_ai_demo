@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import streamlit as st
+
+# ── Disable Streamlit’s file-watcher entirely to avoid torch-related errors ───
+st.set_option("server.fileWatcherType", "none")
+
 import transformers
 from langchain.chains import RetrievalQA
 from langchain.schema import BaseRetriever
