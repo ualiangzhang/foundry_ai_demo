@@ -82,8 +82,8 @@ logging.basicConfig(
 logger = logging.getLogger("SFT-Generator")
 
 # ─────────────────────────── Constants & Prompts ─────────────────────────────
-GEN_MODEL: str = "gpt-4o-mini"
-CRITIC_MODEL: str = "gpt-4o-mini"
+GEN_MODEL: str = "gpt-4o"
+CRITIC_MODEL: str = "gpt-4o"
 
 # List of themes representing different market domains
 THEMES: List[str] = [
