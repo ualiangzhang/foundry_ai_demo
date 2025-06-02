@@ -110,11 +110,14 @@ def _summarize_context(
         "Generate JSON as specified above."
     )
     for _ in range(3):
+        logger.info("444." + snippet)
         raw_output: str = llm.invoke(template).strip()
+        logger.info("555." + raw_output)
         try:
             context = json.loads(raw_output).get("context", "").strip()
-            logger.info("111." + context)
+            logger.info("666." + raw_output)
             wc = len(re.findall(r'\S+', context))
+            logger.info("777." + str(wc))
             if 80 <= wc <= 140:
                 return context
         except Exception:
