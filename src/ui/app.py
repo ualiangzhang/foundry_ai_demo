@@ -1,30 +1,25 @@
 # src/ui/app.py
 
+import os
+
+# ── Workaround to prevent Streamlit’s file-watcher from inspecting torch internals ──
+# This tells Streamlit to ignore any module paths that contain “torch” when watching for file changes.
+os.environ["STREAMLIT_WATCHDOG_IGNORE_DIRS"] = "torch"
+
 import logging
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 import streamlit as st
-import transformers
-from langchain.chains import RetrievalQA
-from langchain.schema import BaseRetriever
-from langchain_community.llms import HuggingFacePipeline
 
-# ── Ensure project root is on PYTHONPATH so that src modules can be imported ──
-# If this file is at <project_root>/src/ui/app.py, then:
-#   Path(__file__).parent           -> <project_root>/src/ui
-#   Path(__file__).parent.parent    -> <project_root>/src
-#   Path(__file__).parent.parent.parent -> <project_root>
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent  # type: ignore
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.rag.chains import build_chain  # noqa: E402
-from src.rag.model_loader import load_llama  # noqa: E402
-from src.rag.prompts import RAG_WRAPPER, PROJECT_EVAL, PITCH_DECK  # noqa: E402
 
 
-# ── Configure module‐level logger ─────────────────────────────────────────────
+# ── Configure module-level logger ─────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
