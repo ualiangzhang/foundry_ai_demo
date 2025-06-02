@@ -42,7 +42,7 @@ per_device_train_batch_size: 4                                  # Batch size per
 gradient_accumulation_steps: 4                                 # Accumulate gradients over 4 step → effective global batch = 4 × 4 = 16
 learning_rate: 0.0002                                           # Initial learning rate for optimizer
 weight_decay: 0.001                                              # L2 weight decay to regularize fine-tuning
-num_train_epochs: 20                                             # Number of full passes over the dataset
+num_train_epochs: 30                                             # Number of full passes over the dataset
 lr_scheduler_type: cosine                                       # Cosine learning rate scheduling
 warmup_ratio: 0.1                                               # Warmup fraction (10% of total training steps used to gradually increase LR)
 bf16: true                                                      # Use bfloat16 mixed precision on H100 for faster training and reduced memory
