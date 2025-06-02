@@ -9,7 +9,7 @@ Constructs three types of chains:
 
 Return values:
     eval  → Callable({"question": summary}) → {
-              "recommendations": str,
+              "result": str,
               "context": str,
               "snippet": str,
               "docs": list[str]
@@ -145,7 +145,7 @@ def build_chain(
     """
     Returns:
       eval  → Callable({"question": summary}) → {
-                 "recommendations": str,
+                 "result": str,
                  "context": str,
                  "snippet": str,
                  "docs": list[str]
