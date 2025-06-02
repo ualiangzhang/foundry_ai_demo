@@ -95,6 +95,7 @@ THEMES: List[str] = [
 # Keywords to append when searching for market data
 MARKET_KEYWORDS: List[str] = [
     "market size 2025", "Total Addressable Market", "Compound Annual Growth Rate",
+    "Annual Growth Rate", "Market Revenue", "user growth statistics", "market forcast"
 ]
 
 # System prompt for generating a startup idea ("summary") given a theme
