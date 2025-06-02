@@ -105,6 +105,7 @@ if st.button("Evaluate Startup"):
 
             # 2 ▸ VC recommendations (cleaned)
             st.subheader("💡 VC Recommendations")
+            logger.info("result: " + output.get("result", ""))
             recs = postprocess_recommendations(output.get("result", ""))
             if recs:
                 st.markdown(recs)
