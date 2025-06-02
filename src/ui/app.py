@@ -6,12 +6,23 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import streamlit as st
+import transformers
+from langchain.chains import RetrievalQA
+from langchain.schema import BaseRetriever
+from langchain_community.llms import HuggingFacePipeline
 
 # ── Ensure project root is on PYTHONPATH so that src modules can be imported ──
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent  # type: ignore
+# If this file is at <project_root>/src/ui/app.py, then:
+#   Path(__file__).parent           -> <project_root>/src/ui
+#   Path(__file__).parent.parent    -> <project_root>/src
+#   Path(__file__).parent.parent.parent -> <project_root>
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent  # type: ignore
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.rag.chains import build_chain  # noqa: E402
+from src.rag.model_loader import load_llama  # noqa: E402
+from src.rag.prompts import RAG_WRAPPER, PROJECT_EVAL, PITCH_DECK  # noqa: E402
+
 
 # ── Configure module‐level logger ─────────────────────────────────────────────
 logging.basicConfig(
@@ -32,7 +43,6 @@ def get_chains() -> Dict[str, Any]:
         - "pitch" to a RetrievalQA chain for generating pitch-deck bullets.
         - "rag" to a RetrievalQA chain for generic RAG QA.
     """
-    # build_chain uses a LoRA-fine-tuned LLaMA-3 wrapped in HuggingFacePipeline
     eval_chain = build_chain(kind="eval", store="chroma")
     pitch_chain = build_chain(kind="pitch", store="chroma")
     rag_chain = build_chain(kind="rag", store="chroma")
@@ -43,6 +53,7 @@ chains: Dict[str, Any] = get_chains()
 
 # Create Streamlit tabs for the three functionalities
 tab1, tab2, tab3 = st.tabs(["Evaluator", "Pitch-deck", "Generic RAG"])
+
 
 # ─────────────────────────── Tab 1: Evaluator ────────────────────────────────
 with tab1:
@@ -102,6 +113,7 @@ with tab1:
                 logger.error(f"Evaluator chain failed: {e}")
                 st.error(f"Evaluation failed: {e}")
 
+
 # ──────────────────────── Tab 2: Pitch-deck ─────────────────────────────────
 with tab2:
     st.header("Pitch Deck Generator")
@@ -133,6 +145,7 @@ with tab2:
             except Exception as e:
                 logger.error(f"Pitch-deck chain failed: {e}")
                 st.error(f"Pitch-deck generation failed: {e}")
+
 
 # ─────────────────────────── Tab 3: Generic RAG ───────────────────────────────
 with tab3:
