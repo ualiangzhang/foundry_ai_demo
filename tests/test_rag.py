@@ -79,7 +79,7 @@ def make_base_chain(
 def make_lora_chain(store: str = "chroma") -> RetrievalQA:
     """Return the LoRA-merged RetrievalQA chain (kind='rag')."""
     logger.info(f"Building LoRA chain (store='{store}')…")
-    return build_chain(kind="eval", store=store)  # already a RetrievalQA
+    return build_chain(kind="rag", store=store)  # already a RetrievalQA
 
 
 # --------------------------------------------------------------------------- #
