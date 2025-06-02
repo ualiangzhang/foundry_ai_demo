@@ -80,10 +80,8 @@ def make_base_eval(
 # --------------------------------------------------------------------------- #
 def main() -> None:
     query = (
-        "Develop a sustainable leather alternative by cultivating and processing "
-        "mycelium-based materials into high-quality, biodegradable leather substitutes "
-        "for fashion and upholstery, reducing reliance on animal hides and "
-        "minimizing environmental impact."
+        "Build a telemedicine platform that uses AI to diagnose skin conditions "
+        "from smartphone photos, delivering timely dermatology advice to remote patients."
     )
 
     # ---------- LoRA chains --------------------------------------------------
