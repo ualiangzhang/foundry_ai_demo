@@ -54,9 +54,9 @@ logger = logging.getLogger(__name__)
 # Configuration
 # -----------------------------------------------------------------------------
 MARKET_KEYWORDS = [
-    "market size 2025",
-    "Total Addressable Market",
-    "Compound Annual Growth Rate",
+    "market size 2025", "Total Addressable Market",
+    "Compound Annual Growth Rate", "market size 2025", "Total Addressable Market", "Compound Annual Growth Rate",
+    "Annual Growth Rate", "Market Revenue", "user growth statistics", "market forcast"
 ]
 
 
@@ -95,9 +95,9 @@ def _fetch_market_snippet(summary: str) -> Optional[str]:
 # Summarise snippet → ~100-word context  (no deprecated LLMChain.run)
 # -----------------------------------------------------------------------------
 def _summarize_context(
-    llm: HuggingFacePipeline,
-    summary: str,
-    snippet: str,
+        llm: HuggingFacePipeline,
+        summary: str,
+        snippet: str,
 ) -> Optional[str]:
     """
     Convert snippet + summary into a ~100-word market context. Uses llm.invoke
@@ -139,8 +139,8 @@ def _build_retriever(store: str) -> BaseRetriever:
 # Public API
 # -----------------------------------------------------------------------------
 def build_chain(
-    kind: Literal["eval", "pitch", "rag"] = "eval",
-    store: Literal["chroma", "qdrant"] = "chroma",
+        kind: Literal["eval", "pitch", "rag"] = "eval",
+        store: Literal["chroma", "qdrant"] = "chroma",
 ):
     """
     Returns:
