@@ -67,19 +67,18 @@ def make_base_chain(
     )
     base_llm = HuggingFacePipeline(pipeline=pipe)
 
-    logger.info("Creating RetrievalQA chain for base model…")
-    return RetrievalQA.from_chain_type(
-        llm=base_llm,
-        chain_type="stuff",
-        retriever=retriever,
-        chain_type_kwargs={"prompt": RAG_WRAPPER},
-    )
+    # we rebuild the *eval* chain logic here: retrieve snippet + context → 4 bullets
+    eval_chain = build_chain(kind="eval", store="chroma")
+    # Monkey-patch its llm to the base weights and keep same retriever
+    eval_chain.__closure__[0].cell_contents["llm"] = base_llm  # type: ignore
+    eval_chain.__closure__[0].cell_contents["retriever"] = retriever  # type: ignore
+    return eval_chain
 
 
 def make_lora_chain(store: str = "chroma") -> RetrievalQA:
     """Return the LoRA-merged RetrievalQA chain (kind='rag')."""
     logger.info(f"Building LoRA chain (store='{store}')…")
-    return build_chain(kind="rag", store=store)  # already a RetrievalQA
+    return build_chain(kind="eval", store=store)  # already a RetrievalQA
 
 
 # --------------------------------------------------------------------------- #

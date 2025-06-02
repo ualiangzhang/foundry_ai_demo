@@ -201,7 +201,7 @@ def build_chain(
             docs_texts = [doc.page_content for doc in docs[:3]]
 
             return {
-                "recommendations": recommendations,
+                "result": recommendations,
                 "context": context,
                 "snippet": snippet,
                 "docs": docs_texts,
