@@ -52,10 +52,16 @@ logger = logging.getLogger(__name__)
 ###############################################################################
 def postprocess_recommendations(raw: str) -> str:
     """
-    Return the Market-context paragraph and the four recommendation bullets, with:
-      1. Everything before '### Market context' removed.
-      2. Trailing hashtags after the Team bullet stripped.
-      3. Underscores escaped to avoid Markdown italics.
+    Return only the Market-context paragraph and the four recommendation bullets.
+
+    Steps
+    -----
+    1. Remove any lines starting with 'System:' or 'Human:'.
+    2. Discard 'INSUFFICIENT_CONTEXT' if present.
+    3. Keep everything from the first '### Market context' onward; drop the rest.
+    4. If “[END]” appears after Team:, truncate and discard it and anything following.
+    5. Strip trailing hashtags on the Team bullet.
+    6. Escape underscores so Streamlit Markdown does not interpret them as italics.
 
     Parameters
     ----------
@@ -65,28 +71,42 @@ def postprocess_recommendations(raw: str) -> str:
     Returns
     -------
     str
-        Sanitised text, ready for st.markdown().
+        Cleaned text, ready to pass to st.markdown().
     """
     # Normalize newlines
     txt = raw.replace("\r\n", "\n")
 
-    # 1) Drop everything before "### Market context"
-    m = re.search(r"(?m)^###\s*Market\s+context", txt)
-    if m:
-        txt = txt[m.start():]
+    # 1) Remove scaffolding lines
+    txt = "\n".join(
+        line for line in txt.splitlines()
+        if not re.match(r"^\s*(System|Human)\s*:", line, flags=re.I)
+    )
+
+    # 2) Drop "INSUFFICIENT_CONTEXT"
+    txt = txt.replace("INSUFFICIENT_CONTEXT", "")
+
+    # 3) Keep from "### Market context" onward
+    match = re.search(r"(?m)^###\s*Market\s+context", txt)
+    if match:
+        txt = txt[match.start():]
     else:
-        # If for some reason "### Market context" isn't found, return empty
+        # If "### Market context" not found, return empty
         return ""
 
-    # 2) Trim trailing hashtags on the Team bullet
+    # 4) Truncate at first "[END]" if present
+    end_index = txt.find("[END]")
+    if end_index != -1:
+        txt = txt[:end_index]
+
+    # 5) Strip trailing hashtags after Team:
     txt = re.sub(
-        r"(Team:\s*.+?)(?:\s*#.*)$",  # match from "Team:" up to first "#" (inclusive)
+        r"(Team:\s*.+?)(?:\s*#.*)$",
         r"\1",
         txt,
         flags=re.IGNORECASE | re.DOTALL,
     )
 
-    # 3) Escape underscores so Streamlit Markdown doesn't render them as italics
+    # 6) Escape underscores to prevent Markdown italics
     txt = txt.replace("_", r"\_")
 
     return txt.strip()
