@@ -77,8 +77,8 @@ Verify that both variables are set:
 echo $OPENAI_API_KEY
 echo $SERPAPI_API_KEY
 ```
-
 You should see each key printed back. If either is blank, double-check that you added the export lines to the correct file and re-sourced it.
+
 ---
 
 ## Data Preparation
