@@ -24,8 +24,10 @@ import json
 import logging
 import random
 import re
+import os
 import time
 from typing import Dict, Literal, Optional, Any
+import serpapi
 
 import transformers
 from langchain.chains import LLMChain, RetrievalQA
@@ -54,13 +56,9 @@ logger = logging.getLogger(__name__)
 # Configuration
 # -----------------------------------------------------------------------------
 MARKET_KEYWORDS = [
-    "market size 2025",
     "Total Addressable Market 2025",
-    "market forecast 2025",
     "Compound Annual Growth Rate 2025",
-    "Annual Growth Rate 2025",
     "Market Revenue 2025",
-    "user growth statistics 2025",
 ]
 
 
@@ -84,15 +82,51 @@ def _make_llm(max_new_tokens: int = 512, temperature: float = 0.2) -> HuggingFac
 
 
 def _fetch_market_snippet(summary: str) -> Optional[str]:
-    """Query DuckDuckGo for a numeric snippet related to `summary`. Return ≤50 words with at least one digit."""
-    for kw in random.sample(MARKET_KEYWORDS, len(MARKET_KEYWORDS)):
-        snippet = duck_top1_snippet(f"{summary} {kw}")
-        if snippet and any(ch.isdigit() for ch in snippet):
-            # Truncate to 50 words
-            words = re.findall(r"\S+", snippet)[:50]
-            return " ".join(words)
+    """
+    Query SerpApi for each keyword in MARKET_KEYWORDS combined with `summary`.
+    For each search, take the first organic result's "snippet", truncate to 50 words,
+    and concatenate all such truncated snippets into a single string. If no valid
+    snippet is found for any keyword, skip it. Return the combined string or None.
+    """
+    snippets: list[str] = []
+
+    for kw in MARKET_KEYWORDS:
+        query_text = f"{kw} {summary}"
+        try:
+            # Perform a Google search via SerpApi
+            res = serpapi.search({
+                "q": query_text,
+                "engine": "google",
+                # The API key is read from the SERPAPI_API_KEY environment variable by default.
+                # No need to pass "api_key" explicitly if it's set in the environment.
+            })
+        except Exception as e:
+            logger.error(f"SerpApi search failed for '{query_text}': {e}")
+            continue
+
+        # Extract the first organic result's snippet if available
+        organic = res.get("organic_results", [])
+        if not organic:
+            continue
+
+        first = organic[0]
+        snippet_text = first.get("snippet", "")
+        if not snippet_text:
+            continue
+
+        # Truncate to 50 words
+        words = re.findall(r"\S+", snippet_text)[:50]
+        truncated = " ".join(words)
+        snippets.append(truncated)
+
+        # Be polite and avoid hitting rate limits
         time.sleep(0.3)
-    return None
+
+    if not snippets:
+        return None
+
+    # Concatenate all truncated snippets into one string
+    return " ".join(snippets)
 
 
 # -----------------------------------------------------------------------------
