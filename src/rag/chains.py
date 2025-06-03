@@ -97,8 +97,7 @@ def _fetch_market_snippet(summary: str) -> Optional[str]:
             res = serpapi.search({
                 "q": query_text,
                 "engine": "google",
-                # The API key is read from the SERPAPI_API_KEY environment variable by default.
-                # No need to pass "api_key" explicitly if it's set in the environment.
+                "api_key": os.getenv("SERPAPI_API_KEY")
             })
         except Exception as e:
             logger.error(f"SerpApi search failed for '{query_text}': {e}")
