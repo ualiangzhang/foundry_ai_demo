@@ -9,7 +9,7 @@ This repository demonstrates an end-to-end pipeline for building a lightweight R
 The system is designed to support venture capital (VC)-style evaluation for startup ideas. Given a startup summary, the system:
 
 1. Uses ChatGPT-4o to generate startup ideas and responses.
-2. Retrieves a numeric snippet using DuckDuckGo.
+2. Retrieves a numeric snippet using SerpAPI.
 3. Summarizes a market context and generates four concise VC recommendations (Market, Product, Business Model, Team).
 4. Provides a Streamlit UI to run the demo interactively.
 5. Supports SFT with LoRA via the LLaMA Factory.
@@ -65,6 +65,20 @@ pip install -r requirements.txt
 
 3. Download the required datasets manually and place them in `data_raw/`.
 
+4. Set your OpenAI and SerpApi environment variables:
+```bash
+# Replace <YOUR_OPENAI_KEY> and <YOUR_SERPAPI_KEY> with your actual keys
+export OPENAI_API_KEY="<YOUR_OPENAI_KEY>"
+export SERPAPI_API_KEY="<YOUR_SERPAPI_KEY>"
+source ~/.bashrc    # or `source ~/.bash_profile` or `source ~/.zshrc`, depending on which file you edited
+```
+Verify that both variables are set:
+```bash
+echo $OPENAI_API_KEY
+echo $SERPAPI_API_KEY
+```
+
+You should see each key printed back. If either is blank, double-check that you added the export lines to the correct file and re-sourced it.
 ---
 
 ## Data Preparation
