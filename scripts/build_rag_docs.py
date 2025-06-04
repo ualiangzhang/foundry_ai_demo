@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/rag_docs_builder.py
+scripts/build_rag_docs.py
 
 This script consolidates startup descriptions from three sources—
 Y Combinator (YC) funded companies, generic startup descriptions,
@@ -20,7 +20,7 @@ Only entries where the cleaned text length is at least 200 characters
 are included.
 
 Usage:
-    python scripts/rag_docs_builder.py
+    python scripts/build_rag_docs.py
 
 Ensure that the following directory structure exists under 'data_raw':
     data_raw/yc/             # Contains CSV files of YC funded companies
@@ -43,7 +43,7 @@ Example:
     mkdir -p data_raw/yc data_raw/startup_desc data_raw/shark
     # Place appropriate CSV files in each folder
     mkdir -p data_processed
-    python scripts/rag_docs_builder.py
+    python scripts/build_rag_docs.py
 """
 
 import csv
