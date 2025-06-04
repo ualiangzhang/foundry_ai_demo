@@ -219,10 +219,11 @@ def _generate_qa_answer(question: str, context: str) -> Optional[str]:
         return None
 
     prompt = (
-        "You are a helpful assistant. Use the web snippets below as context.\n\n"
-        f"Context:\n{context}\n\n"
+        "You are a knowledgeable AI assistant. Use the following web snippets purely as reference, "
+        "but feel free to draw on your own general knowledge if the snippets are incomplete or unclear.\n\n"
+        f"Context (web snippets):\n{context}\n\n"
         f"Question:\n{question}\n\n"
-        "Answer in no more than 200 words."
+        "Provide a clear, accurate answer in no more than 200 words."
     )
 
     try:
