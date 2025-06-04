@@ -130,12 +130,6 @@ All tests stub external calls.
 pytest tests/ -q
 ```
 
-```
-tests/test_api.py ........
-tests/test_chains_basic.py .
-tests/test_rag.py  (prints retrieval + LoRA output)
-```
-
 ---
 
 ## 6 · Monitoring (Prometheus + Grafana)
