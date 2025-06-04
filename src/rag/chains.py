@@ -234,7 +234,7 @@ def _generate_qa_answer(question: str, context: str) -> Optional[str]:
                 {"role": "user", "content": prompt},
             ],
             max_tokens=300,
-            temperature=0.2,
+            temperature=0.8,
         )
     except Exception as e:
         logger.error(f"OpenAI chat.completions.create failed: {e}")

@@ -149,8 +149,11 @@ tabs = st.tabs(["Startup Evaluator", "Web QA"])
 with tabs[0]:
     st.header("Startup Evaluation")
     st.write(
-        "Enter a concise startup summary. The system will fetch market context "
-        "and provide four VC-style recommendations."
+        "Enter a concise startup summary. The system will:\n"
+        "1. Retrieve three similar examples from the local vector database.\n"
+        "2. Fetch market background from the web.\n"
+        "3. Use a fine-tuned LLaMA-3 8B Instruct model to summarize the market context.\n"
+        "4. Use the same fine-tuned LLaMA-3 8B Instruct model to generate four VC-style recommendations."
     )
 
     summary: str = st.text_area(
