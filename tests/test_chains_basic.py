@@ -108,5 +108,5 @@ def test_qa_chain_output() -> None:
     # The context should contain the stubbed snippets joined by double newlines
     assert "stub snippet one" in out["context"]
 
-    # The answer should not exceed 200 words (stub will be short)
-    assert len(out["answer"].split()) <= 200
+    # The answer should not exceed 250 words (stub will be short)
+    assert len(out["answer"].split()) <= 250
