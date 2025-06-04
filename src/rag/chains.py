@@ -211,27 +211,25 @@ def _fetch_qa_context(question: str) -> Optional[str]:
 
 def _generate_qa_answer(question: str, context: str) -> Optional[str]:
     """
-    Send a prompt to OpenAI's ChatGPT-4o-mini combining the `context` and `question`.
-    Instruct the model to produce an answer in ≤200 words.
-    Returns the assistant's response or None on error.
+    Ask ChatGPT-4o-mini to answer the question in ≤200 words using the provided context.
+    Works with openai-python ≥1.0 (returns a ChatCompletion object).
     """
     if not openai.api_key:
         logger.error("OPENAI_API_KEY is not set.")
         return None
 
     prompt = (
-        f"You are a helpful assistant. Use the following web snippets as context to answer the question.\n\n"
+        "You are a helpful assistant. Use the web snippets below as context.\n\n"
         f"Context:\n{context}\n\n"
         f"Question:\n{question}\n\n"
-        f"Please answer in no more than 200 words."
+        "Answer in no more than 200 words."
     )
 
     try:
-        # Using the openai>=1.0.0 interface:
         resp = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a concise and accurate assistant."},
+                {"role": "system", "content": "You are concise and accurate."},
                 {"role": "user", "content": prompt},
             ],
             max_tokens=300,
@@ -241,11 +239,11 @@ def _generate_qa_answer(question: str, context: str) -> Optional[str]:
         logger.error(f"OpenAI chat.completions.create failed: {e}")
         return None
 
-    choices = resp.get("choices", [])
-    if not choices:
+    # openai>=1.0 returns a ChatCompletion object → access via attributes
+    if not resp.choices:
         return None
 
-    return choices[0]["message"]["content"].strip()
+    return resp.choices[0].message.content.strip()
 
 
 def _build_retriever(store: str) -> BaseRetriever:
