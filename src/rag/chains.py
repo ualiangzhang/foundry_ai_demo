@@ -65,6 +65,7 @@ MARKET_KEYWORDS = [
     "Market Revenue 2025",
 ]
 
+
 # -----------------------------------------------------------------------------
 # Internal Helpers
 # -----------------------------------------------------------------------------
@@ -127,9 +128,9 @@ def _fetch_market_snippet(summary: str) -> Optional[str]:
 
 
 def _summarize_context(
-    llm: HuggingFacePipeline,
-    summary: str,
-    snippet: str,
+        llm: HuggingFacePipeline,
+        summary: str,
+        snippet: str,
 ) -> Optional[str]:
     """
     Convert snippet + summary into a market context by invoking the LLM.
@@ -152,7 +153,7 @@ def _summarize_context(
             logger.error(f"JSON braces not found or malformed in output: {raw_output}")
             continue
 
-        json_str = raw_output[start_idx : end_idx + 1]
+        json_str = raw_output[start_idx: end_idx + 1]
         try:
             parsed = json.loads(json_str)
             context = parsed.get("context", "").strip()
@@ -226,7 +227,8 @@ def _generate_qa_answer(question: str, context: str) -> Optional[str]:
     )
 
     try:
-        resp = openai.ChatCompletion.create(
+        # Using the openai>=1.0.0 interface:
+        resp = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a concise and accurate assistant."},
@@ -236,7 +238,7 @@ def _generate_qa_answer(question: str, context: str) -> Optional[str]:
             temperature=0.2,
         )
     except Exception as e:
-        logger.error(f"OpenAI ChatCompletion failed: {e}")
+        logger.error(f"OpenAI chat.completions.create failed: {e}")
         return None
 
     choices = resp.get("choices", [])
@@ -263,8 +265,8 @@ def _build_retriever(store: str) -> BaseRetriever:
 # Public API
 # -----------------------------------------------------------------------------
 def build_chain(
-    kind: Literal["eval", "pitch", "rag", "qa"] = "eval",
-    store: Literal["chroma", "qdrant"] = "chroma",
+        kind: Literal["eval", "pitch", "rag", "qa"] = "eval",
+        store: Literal["chroma", "qdrant"] = "chroma",
 ):
     """
     Returns:
