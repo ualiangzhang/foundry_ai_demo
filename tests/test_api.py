@@ -10,11 +10,13 @@ import os
 from typing import Any, Dict
 
 # Ensure project root is on sys.path so that api_server.py can be imported
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+TEST_DIR = os.path.dirname(__file__)
+SRC_DIR = os.path.abspath(os.path.join(TEST_DIR, "../"))
+sys.path.insert(0, SRC_DIR)
 
 
 from fastapi.testclient import TestClient
-import api_server
+import src.api_server as api_server
 
 
 # ------------------------------------------------------------------ #
