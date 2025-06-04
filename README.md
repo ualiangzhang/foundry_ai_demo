@@ -14,7 +14,7 @@ The stack supports two core capabilities exposed via both a **Streamlit UI** and
 ## 1 · Repository Map
 
 ```text
-.
+
 ├── scripts/                 # One-off data / SFT utilities
 │   ├── rag_docs_builder.py
 │   ├── chunk_rag_docs.py
