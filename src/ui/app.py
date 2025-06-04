@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Streamlit UI for the Startup Evaluator chain.
+Streamlit UI for the Startup Evaluator & Web QA.
 
 2025-06-02
-* Drop all text before `### Market context` (removing System/Human scaffolding).
-* Trim hashtags after “Team:” bullet.
-* Escape underscores to prevent unintended Markdown italics.
+* Adds a “Web QA” tab alongside the existing “Startup Evaluator” tab.
+* Each tab has its own input fields and buttons.
+* QA tab uses SerpApi + OpenAI GPT-4o-mini to answer questions using top-3 snippets.
+* All comments and interface text are in professional, clear English.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from typing import Any, Dict, List
 import streamlit as st
 
 # ── FIRST Streamlit command must be `set_page_config` ────────────────────────
-st.set_page_config(page_title="Startup Evaluator", layout="centered")
+st.set_page_config(page_title="Evaluator & Web QA", layout="centered")
 
 ###############################################################################
 # PYTHONPATH adjustment so `src.*` imports work                                #
@@ -111,78 +112,128 @@ def postprocess_recommendations(raw: str) -> str:
 
     return txt.strip()
 
+
 ###############################################################################
-# Cache and build only the “eval” chain                                        #
+# Cache and build the “eval” and “qa” chains                                   #
 ###############################################################################
 @st.cache_resource
 def get_eval_chain() -> Any:
     """
-    Build and cache the evaluation chain.
-
-    Returns
-    -------
-    Any
-        A callable that expects {"question": <startup summary>} and
-        returns a dict with keys "docs", "context", and "result".
+    Build and cache the evaluation chain (VC recommendations).
+    Returns a callable that expects {"question": <startup summary>}.
     """
     return build_chain(kind="eval", store="chroma")
 
 
+@st.cache_resource
+def get_qa_chain() -> Any:
+    """
+    Build and cache the web QA chain (SerpApi + OpenAI).
+    Returns a callable that expects {"question": <user question>}.
+    """
+    return build_chain(kind="qa", store="chroma")
+
+
 eval_chain: Any = get_eval_chain()
+qa_chain: Any = get_qa_chain()
 
 ###############################################################################
-# Streamlit UI                                                                 #
+# Streamlit UI                                                                #
 ###############################################################################
-st.title("🚀 Startup Evaluator")
+st.title("🚀 Startup Evaluator & Web QA")
 
-# ── Input area ---------------------------------------------------------------
-summary: str = st.text_area(
-    label="Enter your startup summary (idea)",
-    height=120,
-    placeholder=(
-        "e.g., A VR fitness platform with real-time coaching features and personalised workout plans…"
-    ),
-)
+# Create two tabs: one for startup evaluation, one for web-based QA
+tabs = st.tabs(["Startup Evaluator", "Web QA"])
 
-# ── Evaluation button --------------------------------------------------------
-if st.button("Evaluate Startup"):
-    if not summary.strip():
-        st.error("❗ Please enter a non-empty startup summary.")
-    else:
-        try:
-            # Invoke the eval chain: returns a dict containing:
-            #   "docs": List[str] (top-3 similar startup examples),
-            #   "context": str (~100-word market context),
-            #   "result": str (full raw output with scaffolding & recommendations)
-            output: Dict[str, Any] = eval_chain({"question": summary})
+# ── Tab 1: Startup Evaluator -----------------------------------------------
+with tabs[0]:
+    st.header("Startup Evaluation")
+    st.write(
+        "Enter a concise startup summary. The system will fetch market context "
+        "and provide four VC-style recommendations."
+    )
 
-            # ────────────────────────────────────────────────────────────────────
-            # 1) Three Similar Startup Examples (truncate to 200 words each)
-            # ────────────────────────────────────────────────────────────────────
-            st.subheader("📄 Three Similar Startup Examples")
-            retrieved: List[str] = output.get("docs", [])
-            if retrieved:
-                for idx, doc_text in enumerate(retrieved, start=1):
-                    words: List[str] = doc_text.strip().split()
-                    truncated: str = (
-                        " ".join(words[:200]) + " …" if len(words) > 200 else " ".join(words)
-                    )
-                    with st.expander(f"Example {idx}", expanded=False):
-                        st.write(truncated)
-            else:
-                st.info("No similar startup examples retrieved.")
+    summary: str = st.text_area(
+        label="Startup Summary",
+        height=120,
+        placeholder=(
+            "e.g., A VR fitness platform with real-time coaching features and personalised workout plans…"
+        ),
+    )
 
-            # ────────────────────────────────────────────────────────────────────
-            # 2) VC Recommendations (Market-context + four bullets only)
-            # ────────────────────────────────────────────────────────────────────
-            st.subheader("💡 VC Recommendations")
-            raw_recs: str = output.get("result", "")
-            cleaned_recs = postprocess_recommendations(raw_recs)
-            if cleaned_recs:
-                st.markdown(cleaned_recs)
-            else:
-                st.info("No recommendations generated by the model.")
+    if st.button("Evaluate Startup", key="eval_button"):
+        if not summary.strip():
+            st.error("❗ Please enter a non-empty startup summary.")
+        else:
+            try:
+                # Invoke the evaluation chain
+                output: Dict[str, Any] = eval_chain({"question": summary})
 
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Evaluator chain failed: %s", exc)
-            st.error(f"Evaluation failed: {exc}")
+                # 1) Three Similar Startup Examples
+                st.subheader("📄 Three Similar Startup Examples")
+                retrieved: List[str] = output.get("docs", [])
+                if retrieved:
+                    for idx, doc_text in enumerate(retrieved, start=1):
+                        words: List[str] = doc_text.strip().split()
+                        truncated: str = (
+                            " ".join(words[:200]) + " …" if len(words) > 200 else " ".join(words)
+                        )
+                        with st.expander(f"Example {idx}", expanded=False):
+                            st.write(truncated)
+                else:
+                    st.info("No similar startup examples retrieved.")
+
+                # 2) VC Recommendations
+                st.subheader("💡 VC Recommendations")
+                raw_recs: str = output.get("result", "")
+                cleaned_recs = postprocess_recommendations(raw_recs)
+                if cleaned_recs:
+                    st.markdown(cleaned_recs)
+                else:
+                    st.info("No recommendations generated by the model.")
+
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Evaluator chain failed: %s", exc)
+                st.error(f"Evaluation failed: {exc}")
+
+# ── Tab 2: Web QA ----------------------------------------------------------
+with tabs[1]:
+    st.header("Web-based Question Answering")
+    st.write(
+        "Enter any factual question. The system will fetch the top-3 web snippets "
+        "and then use OpenAI’s ChatGPT-4o-mini to provide a concise answer (≤200 words)."
+    )
+
+    question: str = st.text_area(
+        label="Your Question",
+        height=120,
+        placeholder="e.g., What is CRISPR gene editing?",
+    )
+
+    if st.button("Get Answer", key="qa_button"):
+        if not question.strip():
+            st.error("❗ Please enter a non-empty question.")
+        else:
+            try:
+                # Invoke the QA chain
+                output: Dict[str, Any] = qa_chain({"question": question})
+
+                # Display the concatenated context from web snippets
+                st.subheader("🔍 Retrieved Web Snippets Context")
+                context: str = output.get("context", "")
+                if context:
+                    st.write(context)
+                else:
+                    st.info("No relevant web snippets found.")
+
+                # Display the final answer from ChatGPT-4o-mini
+                st.subheader("🤖 Answer")
+                answer: str = output.get("answer", "")
+                if answer:
+                    st.write(answer)
+                else:
+                    st.info("Failed to generate an answer.")
+
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("QA chain failed: %s", exc)
+                st.error(f"QA failed: {exc}")

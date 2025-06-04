@@ -1,46 +1,32 @@
 #!/usr/bin/env python3
 """
-src/rag/chains.py  ·  Updated
+src/rag/chains.py  ·  Updated for QA
 
-Constructs three types of chains:
-- eval  :  DuckDuckGo → market snippet → LLaMA-3 summarization → four VC recommendations
-- pitch :  Vector retrieval (top-3) → LLaMA-3 generates pitch-deck bullets
-- rag   :  Vector retrieval (top-3) → generic RAG QA
-
-Return values:
-    eval  → Callable({"question": summary}) → {
-              "result": str,
-              "context": str,
-              "snippet": str,
-              "docs": list[str]
-           }
-    pitch → RetrievalQA
-    rag   → RetrievalQA
+Adds a new "qa" chain that:
+  1. Uses SerpApi to fetch the top-3 organic snippets for the question.
+  2. Truncates each snippet to 50 words and concatenates them as `context`.
+  3. Calls OpenAI’s ChatGPT-4o-mini with that `context` + the original question.
+  4. Returns an answer limited to 200 words, plus the fetched context.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import random
-import re
 import os
+import re
 import time
-from typing import Dict, Literal, Optional, Any
-import serpapi
+from typing import Dict, Literal, Optional, Any, List
 
+import openai
+import serpapi
 import transformers
-from langchain.chains import LLMChain, RetrievalQA
-from langchain.prompts import PromptTemplate
+
+from langchain.chains import RetrievalQA
 from langchain_community.llms import HuggingFacePipeline
 from langchain.schema import BaseRetriever
-from langchain_core.prompt_values import ChatPromptValue
 
-# Reuse DuckDuckGo helper and context-generation instructions from the SFT script
-from scripts.generate_sft_examples import (
-    duck_top1_snippet,
-    CONTEXT_GEN_SYS,  # Instructions for ~100-word context JSON
-)
+from scripts.generate_sft_examples import CONTEXT_GEN_SYS
 from .model_loader import load_llama
 from .prompts import RAG_WRAPPER, PROJECT_EVAL, PITCH_DECK
 from .retriever import chroma_retriever, qdrant_retriever
@@ -55,12 +41,7 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-MARKET_KEYWORDS = [
-    "Total Addressable Market 2025",
-    "Compound Annual Growth Rate 2025",
-    "Market Revenue 2025",
-]
-
+openai.api_key = os.getenv("OPENAI_API_KEY")  # make sure this is set
 
 # -----------------------------------------------------------------------------
 # Internal Helpers
@@ -81,97 +62,83 @@ def _make_llm(max_new_tokens: int = 512, temperature: float = 0.2) -> HuggingFac
     return HuggingFacePipeline(pipeline=pipeline)
 
 
-def _fetch_market_snippet(summary: str) -> Optional[str]:
+def _fetch_qa_context(question: str) -> Optional[str]:
     """
-    Query SerpApi for each keyword in MARKET_KEYWORDS combined with `summary`.
-    For each search, take the first organic result's "snippet", truncate to 50 words,
-    and concatenate all such truncated snippets into a single string. If no valid
-    snippet is found for any keyword, skip it. Return the combined string or None.
+    Query SerpApi with `question`, take the top-3 organic results' snippets,
+    truncate each to 50 words, and concatenate them as a single `context` string.
+    Returns None if no snippets found.
     """
-    snippets: list[str] = []
+    try:
+        res = serpapi.search({
+            "q": question,
+            "engine": "google",
+            "api_key": os.getenv("SERPAPI_API_KEY"),
+        })
+    except Exception as e:
+        logger.error(f"SerpApi search failed for question '{question}': {e}")
+        return None
 
-    for kw in MARKET_KEYWORDS:
-        query_text = f"{kw} {summary}"
-        try:
-            # Perform a Google search via SerpApi
-            res = serpapi.search({
-                "q": query_text,
-                "engine": "google",
-                "api_key": os.getenv("SERPAPI_API_KEY")
-            })
-        except Exception as e:
-            logger.error(f"SerpApi search failed for '{query_text}': {e}")
-            continue
+    organic = res.get("organic_results", [])
+    if not organic:
+        return None
 
-        # Extract the first organic result's snippet if available
-        organic = res.get("organic_results", [])
-        if not organic:
-            continue
-
-        first = organic[0]
-        snippet_text = first.get("snippet", "")
+    snippets: List[str] = []
+    count = 0
+    for result in organic:
+        if count >= 3:
+            break
+        snippet_text = result.get("snippet", "")
         if not snippet_text:
             continue
-
         # Truncate to 50 words
         words = re.findall(r"\S+", snippet_text)[:50]
         truncated = " ".join(words)
         snippets.append(truncated)
-
-        # Be polite and avoid hitting rate limits
-        time.sleep(0.3)
+        count += 1
+        time.sleep(0.2)
 
     if not snippets:
         return None
 
-    # Concatenate all truncated snippets into one string
-    return " ".join(snippets)
+    return "\n\n".join(snippets)
 
 
-# -----------------------------------------------------------------------------
-# Summarise snippet → ~100-word context  (no deprecated LLMChain.run)
-# -----------------------------------------------------------------------------
-def _summarize_context(
-        llm: HuggingFacePipeline,
-        summary: str,
-        snippet: str,
-) -> Optional[str]:
+def _generate_qa_answer(question: str, context: str) -> Optional[str]:
     """
-    Convert snippet + summary into a market context by invoking the LLM.
-    If the LLM’s output contains extra text around the JSON, extract the JSON
-    block. On any error or missing structure, log the exception and return None.
+    Send a prompt to OpenAI's ChatGPT-4o-mini combining the `context` and `question`.
+    Instruct the model to produce an answer in ≤200 words.
+    Returns the assistant's response or None on error.
     """
-    template = (
-        f"{CONTEXT_GEN_SYS}\n\n"
-        f"Summary: {summary}\n\n"
-        f"Snippet: {snippet}\n\n"
-        "Generate JSON as specified above."
+    if not openai.api_key:
+        logger.error("OPENAI_API_KEY is not set.")
+        return None
+
+    prompt = (
+        f"You are a helpful assistant. Use the following web snippets as context to answer the question.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question:\n{question}\n\n"
+        f"Please answer in no more than 200 words."
     )
 
-    for _ in range(3):
-        raw_output = llm.invoke(template).strip()
+    try:
+        resp = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a concise and accurate assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=300,  # ~ 200 words
+            temperature=0.2,
+        )
+    except Exception as e:
+        logger.error(f"OpenAI ChatCompletion failed: {e}")
+        return None
 
-        # Attempt to locate the outermost JSON object in raw_output
-        start_idx = raw_output.find("{")
-        end_idx = raw_output.rfind("}")
-        if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
-            logger.error(f"JSON braces not found or malformed in output: {raw_output}")
-            continue
+    choices = resp.get("choices", [])
+    if not choices:
+        return None
 
-        json_str = raw_output[start_idx: end_idx + 1]
-        try:
-            parsed = json.loads(json_str)
-            context = parsed.get("context", "").strip()
-            if not context:
-                logger.error(f"'context' key missing or empty in parsed JSON: {json_str}")
-                continue
-            return context
-
-        except Exception as e:
-            logger.error(f"Failed to parse JSON from LLM output: {e}; raw_output: {raw_output}")
-            continue
-
-    return None
+    return choices[0]["message"]["content"].strip()
 
 
 def _build_retriever(store: str) -> BaseRetriever:
@@ -182,8 +149,6 @@ def _build_retriever(store: str) -> BaseRetriever:
         retriever = qdrant_retriever()
     else:
         raise ValueError(f"Unsupported store '{store}'. Choose 'chroma' or 'qdrant'.")
-
-    # Ensure only top-3 are returned
     retriever.search_kwargs["k"] = 3
     return retriever
 
@@ -192,99 +157,108 @@ def _build_retriever(store: str) -> BaseRetriever:
 # Public API
 # -----------------------------------------------------------------------------
 def build_chain(
-        kind: Literal["eval", "pitch", "rag"] = "eval",
-        store: Literal["chroma", "qdrant"] = "chroma",
+    kind: Literal["eval", "pitch", "rag", "qa"] = "eval",
+    store: Literal["chroma", "qdrant"] = "chroma",
 ):
     """
     Returns:
-      eval  → Callable({"question": summary}) → {
+      eval → Callable({"question": summary}) → {
                  "result": str,
                  "context": str,
                  "snippet": str,
                  "docs": list[str]
-               }
+             }
       pitch → RetrievalQA (uses PITCH_DECK template, top-3 vector docs)
-      rag   → RetrievalQA (uses RAG_WRAPPER template, top-3 vector docs)
+      rag → RetrievalQA (uses RAG_WRAPPER template, top-3 vector docs)
+      qa → Callable({"question": question}) → {
+                "answer": str,
+                "context": str
+            }
 
     Args:
       kind: Type of chain:
         - "eval": project evaluation (DuckDuckGo snippet → summarize → four VC recommendations)
         - "pitch": pitch deck generation (vector retrieval + LLaMA-3)
         - "rag": generic RAG QA (vector retrieval + LLaMA-3)
-      store: Vector store type for "pitch" and "rag":
+        - "qa": direct QA (SerpApi snippets → OpenAI GPT-4o-mini answer)
+      store: Vector store type for "pitch" and "rag" (ignored by "qa"):
         - "chroma" or "qdrant"
     """
     logger.info(f"build_chain(kind={kind}, store={store})")
+
+    # LLaMA-3 LLM (used by eval/pitch/rag)
     llm = _make_llm()
 
-    # -----------------------------------------------------------------------------
-    # eval branch inside build_chain  (updated to llm.invoke & "result" key)
-    # -----------------------------------------------------------------------------
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 1) eval: unchanged
+    # ─────────────────────────────────────────────────────────────────────────────
     if kind == "eval":
         retriever = _build_retriever(store)
 
         def _eval_run(inputs: Dict[str, str]) -> Dict[str, Any]:
             summary = inputs.get("question", "").strip()
-            # If summary is missing
             if not summary:
-                return {
-                    "result": "No summary provided",
-                    "context": "",
-                    "snippet": "",
-                    "docs": [],
-                }
+                return {"result": "No summary provided", "context": "", "snippet": "", "docs": []}
 
-            # Attempt to fetch snippet
-            snippet = _fetch_market_snippet(summary)
+            snippet = _fetch_qa_context(summary)  # reuse for QA-like snippet gathering
             if not snippet:
-                return {
-                    "result": "No snippet found",
-                    "context": "",
-                    "snippet": "",
-                    "docs": [],
-                }
+                return {"result": "No snippet found", "context": "", "snippet": "", "docs": []}
 
-            # Attempt to build context
             context = _summarize_context(llm, summary, snippet)
             if not context:
-                return {
-                    "result": "No context found",
-                    "context": "",
-                    "snippet": snippet,
-                    "docs": [],
-                }
+                return {"result": "No context found", "context": "", "snippet": snippet, "docs": []}
 
-            # Generate four recommendations
-            pv: ChatPromptValue = PROJECT_EVAL.format_prompt(
-                question=summary,
-                context=context,
-            )
+            pv: ChatPromptValue = PROJECT_EVAL.format_prompt(question=summary, context=context)
             rec_text: str = llm.invoke(pv.to_string()).strip()
 
             docs_text = [d.page_content for d in retriever.get_relevant_documents(summary)]
 
-            return {
-                "result": rec_text,
-                "context": context,
-                "snippet": snippet,
-                "docs": docs_text,
-            }
+            return {"result": rec_text, "context": context, "snippet": snippet, "docs": docs_text}
 
-        logger.info("Built DuckDuckGo eval callable.")
+        logger.info("Built eval callable.")
         return _eval_run
 
-    # ----------------------- "pitch" or "rag" use RetrievalQA
-    retriever = _build_retriever(store)
-    prompt_map = {"pitch": PITCH_DECK, "rag": RAG_WRAPPER}
-    prompt_template = prompt_map.get(kind)
-    if prompt_template is None:
-        raise ValueError(f"Unsupported chain kind '{kind}'.")
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 2) pitch or rag: unchanged
+    # ─────────────────────────────────────────────────────────────────────────────
+    if kind in {"pitch", "rag"}:
+        retriever = _build_retriever(store)
+        prompt_map = {"pitch": PITCH_DECK, "rag": RAG_WRAPPER}
+        prompt_template = prompt_map[kind]
+        chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=retriever,
+            chain_type_kwargs={"prompt": prompt_template},
+        )
+        logger.info(f"RetrievalQA '{kind}' chain ready (top-3 docs).")
+        return chain
 
-    chain = RetrievalQA.from_chain_type(
-        llm=llm,
-        chain_type="stuff",
-        retriever=retriever,
-        chain_type_kwargs={"prompt": prompt_template},
-    )
-    logger.info(f"RetrievalQA '{kind}' chain ready (top-3 docs).")
-    return chain
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 3) qa: New direct QA using SerpApi + OpenAI GPT-4o-mini
+    # ─────────────────────────────────────────────────────────────────────────────
+    if kind == "qa":
+        def _qa_run(inputs: Dict[str, str]) -> Dict[str, Any]:
+            question = inputs.get("question", "").strip()
+            if not question:
+                return {"answer": "No question provided", "context": ""}
+
+            # 1) Fetch context from SerpApi
+            context = _fetch_qa_context(question)
+            if not context:
+                return {"answer": "No relevant web snippets found.", "context": ""}
+
+            # 2) Ask OpenAI
+            answer = _generate_qa_answer(question, context)
+            if not answer:
+                return {"answer": "Failed to generate an answer.", "context": context}
+
+            return {"answer": answer, "context": context}
+
+        logger.info("Built QA callable.")
+        return _qa_run
+
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 4) Unsupported kind
+    # ─────────────────────────────────────────────────────────────────────────────
+    raise ValueError(f"Unsupported chain kind '{kind}'. Choose 'eval', 'pitch', 'rag', or 'qa'.")
