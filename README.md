@@ -124,10 +124,10 @@ Adapters are saved under `models/adapters/llama3_lora/` and merged on-the-fly by
 
 ## 5 · Testing
 
-All tests stub external calls, so they run < 1 s.
+All tests stub external calls.
 
 ```bash
-pytest -q
+pytest tests/ -q
 ```
 
 ```
