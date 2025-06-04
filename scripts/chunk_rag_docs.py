@@ -29,7 +29,7 @@ Example:
 import json
 import logging
 import pathlib
-from typing import Dict, Iterator, List
+from typing import Any, Dict, Iterator, List
 
 # Configure logging
 logging.basicConfig(
@@ -37,7 +37,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S"
 )
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # Paths
 INPUT_FILE: pathlib.Path = pathlib.Path("data_processed/rag_docs.jsonl")
@@ -51,6 +51,11 @@ OVERLAP_WORDS: int = 50  # Overlap between consecutive chunks
 def chunk_text(text: str, max_words: int, overlap: int) -> Iterator[str]:
     """Split the input text into overlapping chunks based on whitespace.
 
+    This function breaks a long text into chunks of up to `max_words` words,
+    with `overlap` words overlapping between consecutive chunks. If the total
+    word count of `text` is less than or equal to `max_words`, the original
+    text is returned as a single chunk.
+
     Args:
         text: The original text to be chunked.
         max_words: Maximum number of words in each chunk.
@@ -58,14 +63,20 @@ def chunk_text(text: str, max_words: int, overlap: int) -> Iterator[str]:
 
     Yields:
         Each chunk of the text as a string of words.
+
+    Example:
+        >>> list(chunk_text("one two three", max_words=2, overlap=1))
+        ["one two", "two three"]
     """
     words: List[str] = text.split()
     total_words: int = len(words)
 
+    # If text is short enough, yield it as a single chunk
     if total_words <= max_words:
         yield text
         return
 
+    # Step size accounts for overlap
     step: int = max_words - overlap
     for start in range(0, total_words, step):
         end: int = start + max_words
@@ -75,6 +86,14 @@ def chunk_text(text: str, max_words: int, overlap: int) -> Iterator[str]:
 
 def process_file(input_path: pathlib.Path, output_path: pathlib.Path) -> int:
     """Read the input JSONL, chunk long texts, and write to output JSONL.
+
+    Each line in the input JSONL must be a valid JSON object with keys:
+        - "text": str
+        - "meta": Dict[str, Any]
+
+    For each record, if the "text" field contains more than `MAX_WORDS` words,
+    it is split into multiple overlapping chunks. Each chunk is written as a new
+    line in the output JSONL, preserving the original "meta".
 
     Args:
         input_path: Path to the input JSONL file.
@@ -88,7 +107,7 @@ def process_file(input_path: pathlib.Path, output_path: pathlib.Path) -> int:
         IOError: If reading or writing fails.
     """
     if not input_path.exists():
-        msg = f"Input file '{input_path}' not found."
+        msg: str = f"Input file '{input_path}' not found."
         logger.error(msg)
         raise FileNotFoundError(msg)
 
@@ -98,16 +117,16 @@ def process_file(input_path: pathlib.Path, output_path: pathlib.Path) -> int:
                 output_path.open("w", encoding="utf-8") as outfile:
             for line_number, line in enumerate(infile, start=1):
                 try:
-                    obj: Dict = json.loads(line)
+                    obj: Dict[str, Any] = json.loads(line)
                 except json.JSONDecodeError as e:
                     logger.warning(f"Skipping invalid JSON on line {line_number}: {e}")
                     continue
 
                 text: str = obj.get("text", "")
-                meta: Dict = obj.get("meta", {})
+                meta: Dict[str, Any] = obj.get("meta", {})
 
                 for chunk in chunk_text(text, MAX_WORDS, OVERLAP_WORDS):
-                    new_obj: Dict = {"text": chunk, "meta": meta}
+                    new_obj: Dict[str, Any] = {"text": chunk, "meta": meta}
                     try:
                         outfile.write(json.dumps(new_obj, ensure_ascii=False) + "\n")
                         lines_written += 1
@@ -124,7 +143,7 @@ def process_file(input_path: pathlib.Path, output_path: pathlib.Path) -> int:
 def main() -> None:
     """Main entry point for chunking rag_docs.jsonl."""
     try:
-        total = process_file(INPUT_FILE, OUTPUT_FILE)
+        total: int = process_file(INPUT_FILE, OUTPUT_FILE)
         logger.info(f"Processing complete: {total} lines written.")
     except Exception as e:
         logger.error(f"Unhandled exception in main: {e}")

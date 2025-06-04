@@ -162,8 +162,8 @@ CTX_PREFIX: str = "\n\n### Market context\n"
 # DuckDuckGo backends and limits
 DDG_BACKENDS: List[str] = ["api", "html", "lite"]
 MAX_SNIPPET_WORDS: int = 50  # Maximum words for a market snippet
-MAX_DDG_RETRIES: int = 6      # Number of DuckDuckGo retry attempts
-MAX_GEN_ATTEMPTS: int = 3     # Number of GPT generation attempts per stage
+MAX_DDG_RETRIES: int = 6  # Number of DuckDuckGo retry attempts
+MAX_GEN_ATTEMPTS: int = 3  # Number of GPT generation attempts per stage
 
 
 # ─────────────────────────── DuckDuckGo Retrieval ────────────────────────────
@@ -180,26 +180,20 @@ def duck_top1_snippet(query: str) -> Optional[str]:
         or None if no valid snippet is found after all retries.
     """
     for attempt in range(MAX_DDG_RETRIES):
-        # Rotate through backends: 'api', 'html', 'lite'
         backend: str = DDG_BACKENDS[attempt % len(DDG_BACKENDS)]
         try:
             with DDGS() as ddgs:
-                # Use DuckDuckGo search to fetch text results
                 for res in ddgs.text(query, backend=backend, max_results=1):
                     body: str = res.get("body", "")
-                    # Split into words and truncate to MAX_SNIPPET_WORDS
                     words: List[str] = re.findall(r"\S+", body)[:MAX_SNIPPET_WORDS]
                     snippet: str = " ".join(words)
-                    # Return snippet only if it contains at least one digit
                     if any(ch.isdigit() for ch in snippet):
                         return snippet
             logger.debug("No numeric snippet for '%s' via %s; retrying.", query, backend)
         except DuckDuckGoSearchException as exc:
-            # Exponential back-off on rate limits
             wait: float = 1.5 * (2 ** attempt)
             logger.warning(
-                "DuckDuckGo %s backend rate-limit: %s; sleeping %.1fs",
-                backend, exc, wait
+                "DuckDuckGo %s backend rate-limit: %s; sleeping %.1fs", backend, exc, wait
             )
             time.sleep(wait + random.random() * 0.5)
     return None
@@ -207,12 +201,12 @@ def duck_top1_snippet(query: str) -> Optional[str]:
 
 # ─────────────────────────── OpenAI Chat Helper ─────────────────────────────
 def chat(
-    sys_prompt: str,
-    user_prompt: str,
-    *,
-    model: str,
-    temperature: float = 0.7,
-    max_tokens: int = 400,
+        sys_prompt: str,
+        user_prompt: str,
+        *,
+        model: str,
+        temperature: float = 0.7,
+        max_tokens: int = 400,
 ) -> str:
     """
     Call OpenAI ChatCompletion with exponential back-off on rate limits
@@ -239,19 +233,15 @@ def chat(
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            # Strip leading/trailing whitespace from the returned content
             return resp.choices[0].message.content.strip()
         except openai.RateLimitError:
-            # On rate limit, wait 2^attempt seconds before retrying
             wait: int = 2 ** attempt
             logger.warning("OpenAI rate-limit; sleeping %ds", wait)
             time.sleep(wait)
         except (openai.APIConnectionError, openai.APIStatusError) as exc:
-            # Transient network or server errors: wait 2 seconds then retry
             logger.warning("Transient OpenAI error: %s; retry in 2s", exc)
             time.sleep(2)
         except Exception as exc:  # pragma: no cover
-            # Log any other unexpected errors and break
             logger.error("Fatal OpenAI error: %s", exc, exc_info=True)
             break
     return ""
@@ -287,7 +277,7 @@ def _normalize_recommendations_field(field: Any) -> str:
     return str(field)
 
 
-def _is_valid_example(ex: Dict[str, str]) -> bool:
+def _is_valid_example(ex: Dict[str, Any]) -> bool:
     """
     Client-side sanity check to ensure that 'summary', 'context', and 'recommendations'
     exist and satisfy basic length constraints before passing to the critic.
@@ -298,7 +288,7 @@ def _is_valid_example(ex: Dict[str, str]) -> bool:
       - 'recommendations' must be a non-empty field (further validated by critic).
 
     Args:
-        ex (Dict[str, str]): Example dictionary with keys 'summary', 'context', 'recommendations'.
+        ex (Dict[str, Any]): Example dictionary with keys 'summary', 'context', 'recommendations'.
 
     Returns:
         bool: True if example passes basic checks; False otherwise.
@@ -307,24 +297,19 @@ def _is_valid_example(ex: Dict[str, str]) -> bool:
     context: str = ex.get("context", "")
     recs_field: Any = ex.get("recommendations", "")
 
-    # Ensure summary is a non-empty string
     if not isinstance(summary, str) or not summary.strip():
         return False
-    # Ensure context is a non-empty string
     if not isinstance(context, str) or not context.strip():
         return False
 
-    # Normalize recommendations to text and ensure non-empty
     recs_text: str = _normalize_recommendations_field(recs_field)
     if not recs_text.strip():
         return False
 
-    # Validate word count constraints for summary (5–90 words)
     summary_wc: int = _count_words(summary)
     if summary_wc < 5 or summary_wc > 90:
         return False
 
-    # Validate word count constraints for context (80–145 words)
     context_wc: int = _count_words(context)
     if context_wc < 80 or context_wc > 145:
         return False
@@ -350,7 +335,6 @@ def generate_summary(theme: str, temperature: float) -> Optional[str]:
     Returns:
         Optional[str]: The generated startup idea summary, or None if invalid.
     """
-    # Construct the user prompt for summary generation
     user_prompt: str = f"Theme: {theme}\n\nGenerate JSON as specified above."
     raw_output: str = chat(
         SUMMARY_GEN_SYS,
@@ -363,7 +347,6 @@ def generate_summary(theme: str, temperature: float) -> Optional[str]:
     try:
         parsed: Dict[str, Any] = json.loads(raw_output)
         summary: str = parsed.get("summary", "").strip()
-        # Validate summary word count (5–80 words, allowing some leniency)
         if 5 <= _count_words(summary) <= 80:
             return summary
     except (json.JSONDecodeError, KeyError):
@@ -391,7 +374,6 @@ def generate_context(summary: str, temperature: float) -> Optional[str]:
         Optional[str]: Market background context (~100 words), or None on failure.
     """
     snippet: Optional[str] = None
-    # Shuffle keywords to vary query order
     keywords: List[str] = random.sample(MARKET_KEYWORDS, k=len(MARKET_KEYWORDS))
     for kw in keywords:
         query: str = f"{summary} {kw}"
@@ -399,19 +381,16 @@ def generate_context(summary: str, temperature: float) -> Optional[str]:
         if snippet:
             break
 
-    # If no numeric snippet found, skip this summary
     if snippet is None:
         logger.info("No market snippet found for summary: '%s'; skipping.", summary)
         return None
 
-    # Build prompt for context generation
     user_prompt: str = (
         f"Summary: {summary}\n\n"
         f"Snippet: {snippet}\n\n"
-        f"Generate JSON as specified above."
+        "Generate JSON as specified above."
     )
 
-    # Attempt multiple times to get valid context from GPT
     for _ in range(MAX_GEN_ATTEMPTS):
         raw_output: str = chat(
             CONTEXT_GEN_SYS,
@@ -423,7 +402,6 @@ def generate_context(summary: str, temperature: float) -> Optional[str]:
         try:
             parsed: Dict[str, Any] = json.loads(raw_output)
             context: str = parsed.get("context", "").strip()
-            # Validate context word count (80–140 words)
             if 80 <= _count_words(context) <= 140:
                 return context
         except (json.JSONDecodeError, KeyError):
@@ -435,7 +413,7 @@ def generate_context(summary: str, temperature: float) -> Optional[str]:
 
 
 def generate_recommendations(
-    context: str, summary: str, temperature: float
+        context: str, summary: str, temperature: float
 ) -> Optional[str]:
     """
     Generate four numbered VC recommendations (each ≤50 words) based on context and summary.
@@ -457,7 +435,7 @@ def generate_recommendations(
     user_prompt: str = (
         f"Summary: {summary}\n\n"
         f"Context: {context}\n\n"
-        f"Generate JSON as specified above."
+        "Generate JSON as specified above."
     )
 
     for _ in range(MAX_GEN_ATTEMPTS):
@@ -472,7 +450,6 @@ def generate_recommendations(
             parsed: Dict[str, Any] = json.loads(raw_output)
             recs_field: Any = parsed.get("recommendations", "")
             recs_text: str = _normalize_recommendations_field(recs_field).strip()
-            # Return if non-empty; further validation by critic
             if recs_text:
                 return recs_text
         except (json.JSONDecodeError, KeyError):
@@ -497,21 +474,17 @@ def generate_one(theme: str, temperature: float) -> Optional[Dict[str, str]]:
 
     Returns:
         Optional[Dict[str, str]]: Dictionary with keys 'summary', 'context',
-        'recommendations' if all steps succeed and pass client-side checks; else None.
+        'recommendations' if all steps succeed and pass client-side checks; otherwise None.
     """
-    # Step 1: Generate summary (startup idea)
     summary: Optional[str] = generate_summary(theme, temperature)
     if not summary:
         logger.info("Failed to generate summary for theme '%s'; skipping.", theme)
         return None
 
-    # Step 2: Generate context (market background)
     context: Optional[str] = generate_context(summary, temperature)
     if not context:
-        # Error logged inside generate_context
         return None
 
-    # Step 3: Generate recommendations
     recommendations: Optional[str] = generate_recommendations(context, summary, temperature)
     if not recommendations:
         logger.info("Failed to generate recommendations for summary: '%s'.", summary)
@@ -523,7 +496,6 @@ def generate_one(theme: str, temperature: float) -> Optional[Dict[str, str]]:
         "recommendations": recommendations,
     }
 
-    # Client-side validation before sending to critic
     if _is_valid_example(example):
         return example
 
@@ -537,7 +509,7 @@ def review_example(ex: Dict[str, str]) -> Tuple[bool, Optional[Dict[str, str]], 
     Steps:
       1. Serialize the example as JSON and send to GPT critic.
       2. Parse critic response JSON for pass/fail, reason, and optional fix.
-      3. If a valid fix is provided, return (True, fix_dict, reason).
+      3. If critic provides a valid fix, return (True, fix_dict, reason).
       4. Otherwise, return (passed_flag, None, reason).
 
     Args:
@@ -546,7 +518,7 @@ def review_example(ex: Dict[str, str]) -> Tuple[bool, Optional[Dict[str, str]], 
     Returns:
         Tuple[bool, Optional[Dict[str, str]], str]:
           - passed_flag: True if critic approves or provides a valid fix.
-          - fix_dict: Corrected example if critic returned a valid fix; else None.
+          - fix_dict: Corrected example if critic returned a valid fix; otherwise None.
           - reason: Critic's explicit rejection reason or "No reason provided".
     """
     raw_verdict: str = chat(
@@ -563,7 +535,6 @@ def review_example(ex: Dict[str, str]) -> Tuple[bool, Optional[Dict[str, str]], 
         reason: str = verdict.get("reason", "No reason provided")
         fix_raw: Any = verdict.get("fix")
 
-        # If critic provides a fix structure, extract and re-validate
         if fix_raw and isinstance(fix_raw, dict):
             fix_summary: str = fix_raw.get("summary", "").strip()
             fix_context: str = fix_raw.get("context", "").strip()
@@ -586,7 +557,9 @@ def review_example(ex: Dict[str, str]) -> Tuple[bool, Optional[Dict[str, str]], 
 
 def to_sharegpt(ex: Dict[str, str]) -> Dict[str, List[Dict[str, str]]]:
     """
-    Convert a validated example into ShareGPT conversation format:
+    Convert a validated example into ShareGPT conversation format.
+
+    Structure:
       • system: SYSTEM_PROMPT
       • user:   USER_PREFIX + summary + CTX_PREFIX + context
       • assistant: recommendations
@@ -622,7 +595,7 @@ def synthesize(n: int, temperature: float) -> List[Dict[str, str]]:
 
     Returns:
         List[Dict[str, str]]: List of approved examples with keys 'summary', 'context',
-        and 'recommendations'.
+                              and 'recommendations'.
     """
     approved: List[Dict[str, str]] = []
     pbar = tqdm(total=n, desc="Approved")
@@ -635,7 +608,6 @@ def synthesize(n: int, temperature: float) -> List[Dict[str, str]]:
 
         passed, fix, reason = review_example(candidate)
         if passed:
-            # If critic provided a fix, use it; otherwise use original candidate
             final_example: Dict[str, str] = fix if fix else candidate
             approved.append(final_example)
             pbar.update(1)
@@ -649,13 +621,14 @@ def synthesize(n: int, temperature: float) -> List[Dict[str, str]]:
 # ─────────────────────────── File Writers ────────────────────────────────────
 def write_jsonl(path: Path, rows: List[Dict[str, str]]) -> None:
     """
-    Write each approved example as a ShareGPT conversation into a JSONL file:
-      - Each line contains one JSON-serialized ShareGPT conversation.
+    Write each approved example as a ShareGPT conversation into a JSONL file.
+
+    Each line contains one JSON-serialized ShareGPT conversation.
 
     Args:
         path (Path): File path to write the JSONL.
         rows (List[Dict[str, str]]): List of approved examples (with keys 'summary',
-            'context', 'recommendations').
+                                     'context', 'recommendations').
     """
     with path.open("w", encoding="utf-8") as fp:
         for ex in rows:
@@ -666,6 +639,7 @@ def write_jsonl(path: Path, rows: List[Dict[str, str]]) -> None:
 def write_dataset_info() -> None:
     """
     Write 'dataset_info.json' for LLaMA-Factory ingestion.
+
     Defines format and column tags for the SFT dataset.
     """
     info: Dict[str, Any] = {
@@ -693,7 +667,7 @@ def parse_cli() -> argparse.Namespace:
 
     Returns:
         argparse.Namespace: Parsed arguments with attributes 'num' (int) and
-        'temperature' (float).
+                            'temperature' (float).
     """
     parser = argparse.ArgumentParser(
         description="Generate SFT dataset following: summary → context → recommendations."
@@ -720,11 +694,9 @@ def main() -> None:
     args = parse_cli()
     logger.info("Target=%d | temperature=%.2f", args.num, args.temperature)
 
-    # Generate and validate examples
     rows: List[Dict[str, str]] = synthesize(args.num, args.temperature)
     random.shuffle(rows)
 
-    # Write output files
     write_jsonl(SFT_JSONL, rows)
     write_dataset_info()
     logger.info("🎉 Completed – %d examples saved to %s", len(rows), SFT_JSONL)

@@ -34,7 +34,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 # ─── Path to base and adapter directories ────────────────────────────────────
 BASE_DIR: Path = Path("models/base/Meta-Llama-3-8B-Instruct")
@@ -42,9 +42,9 @@ ADAPT_DIR: Path = Path("models/adapters/llama3_lora")
 
 
 def load_llama(
-    device_map: Union[str, dict] = "auto",
-    four_bit: bool = True,
-    use_lora: bool = True
+        device_map: Union[str, dict] = "auto",
+        four_bit: bool = True,
+        use_lora: bool = True
 ) -> Tuple[PreTrainedModel, PreTrainedTokenizerFast]:
     """
     Load the LLaMA-3 (8B) model and tokenizer. Optionally apply a LoRA adapter.
@@ -57,28 +57,28 @@ def load_llama(
       4. If use_lora=True and the adapter directory exists, load and merge the LoRA adapter.
 
     Args:
-        device_map: How to map model layers to devices. Can be "auto" or a dictionary
-                    mapping layer names to device IDs.
-        four_bit: Whether to load the model in 4-bit quantized mode. If False,
-                  model is loaded in bfloat16 (bf16).
-        use_lora: If True and a LoRA adapter is found in ADAPT_DIR, merge its weights
-                  into the base model.
+        device_map (Union[str, dict]): How to map model layers to devices.
+            Can be "auto" or a dictionary mapping layer names to device IDs.
+        four_bit (bool): Whether to load the model in 4-bit quantized mode.
+            If False, model is loaded in bfloat16 (bf16).
+        use_lora (bool): If True and a LoRA adapter is found in ADAPT_DIR,
+            merge its weights into the base model.
 
     Returns:
-        A tuple (model, tokenizer):
-          - model: A transformers.PreTrainedModel (LlamaForCausalLM) set to evaluation mode.
-          - tokenizer: A transformers.PreTrainedTokenizerFast for tokenization.
+        Tuple[PreTrainedModel, PreTrainedTokenizerFast]:
+            - model: A transformers.PreTrainedModel (LlamaForCausalLM) set to evaluation mode.
+            - tokenizer: A transformers.PreTrainedTokenizerFast for tokenization.
 
     Raises:
         FileNotFoundError: If BASE_DIR does not exist or missing model files.
         RuntimeError: If loading model/tokenizer or merging LoRA fails.
     """
-    base_path = BASE_DIR.resolve()
-    adapt_path = ADAPT_DIR.resolve()
+    base_path: Path = BASE_DIR.resolve()
+    adapt_path: Path = ADAPT_DIR.resolve()
 
     # 1) Verify base directory exists
     if not base_path.exists():
-        msg = f"Base model directory '{base_path}' not found."
+        msg: str = f"Base model directory '{base_path}' not found."
         logger.error(msg)
         raise FileNotFoundError(msg)
 
@@ -91,7 +91,7 @@ def load_llama(
             legacy=False
         )
     except Exception as e:
-        msg = f"Failed to load tokenizer from '{base_path}': {e}"
+        msg: str = f"Failed to load tokenizer from '{base_path}': {e}"
         logger.error(msg)
         raise RuntimeError(msg)
 
@@ -101,13 +101,13 @@ def load_llama(
         # Use 4-bit quantization with bfloat16 compute dtype
         logger.info("Configuring model for 4-bit quantization (bnb)...")
         try:
-            bnb_cfg = BitsAndBytesConfig(
+            bnb_cfg: BitsAndBytesConfig = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_compute_dtype=torch.bfloat16
             )
             model_kwargs["quantization_config"] = bnb_cfg
         except Exception as e:
-            msg = f"Failed to create BitsAndBytesConfig for 4-bit: {e}"
+            msg: str = f"Failed to create BitsAndBytesConfig for 4-bit: {e}"
             logger.error(msg)
             raise RuntimeError(msg)
     else:
@@ -124,7 +124,7 @@ def load_llama(
             **model_kwargs
         )
     except Exception as e:
-        msg = f"Failed to load LLaMA-3 from '{base_path}': {e}"
+        msg: str = f"Failed to load LLaMA-3 from '{base_path}': {e}"
         logger.error(msg)
         raise RuntimeError(msg)
 
@@ -133,11 +133,11 @@ def load_llama(
         if adapt_path.exists():
             try:
                 logger.info(f"Loading LoRA adapter from '{adapt_path}' and merging...")
-                adapter_model = PeftModel.from_pretrained(model, str(adapt_path))
+                adapter_model: PeftModel = PeftModel.from_pretrained(model, str(adapt_path))
                 adapter_model.merge_and_unload()
                 logger.info("✓  LoRA weights merged successfully.")
             except Exception as e:
-                msg = f"Failed to load or merge LoRA adapter from '{adapt_path}': {e}"
+                msg: str = f"Failed to load or merge LoRA adapter from '{adapt_path}': {e}"
                 logger.error(msg)
                 raise RuntimeError(msg)
         else:

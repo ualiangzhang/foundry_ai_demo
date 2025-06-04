@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """
-Streamlit UI for the Startup Evaluator & Web QA.
+src/ui/app.py
 
-2025-06-02
-* Adds a “Web QA” tab alongside the existing “Startup Evaluator” tab.
-* Each tab has its own input fields and buttons.
-* QA tab uses SerpApi + OpenAI GPT-4o-mini to answer questions using top-3 snippets.
-* All comments and interface text are in professional, clear English.
+Streamlit UI for the Startup Evaluator & Web QA.
 """
 
 from __future__ import annotations
@@ -14,8 +10,12 @@ from __future__ import annotations
 ###############################################################################
 # Early monkey‐patch so Streamlit’s watchdog doesn’t inspect PyTorch internals #
 ###############################################################################
-import types, sys, os
-_dummy = types.ModuleType("torch.classes"); _dummy.__path__ = []  # type: ignore[attr-defined]
+import types
+import sys
+import os
+
+_dummy: types.ModuleType = types.ModuleType("torch.classes")  # type: ignore[attr-defined]
+_dummy.__path__ = []  # type: ignore[attr-defined]
 sys.modules["torch.classes"] = _dummy
 os.environ["STREAMLIT_WATCHDOG_IGNORE_DIRS"] = "torch"
 os.environ["STREAMLIT_WATCHDOG_IGNORE_MODULES"] = "torch"
@@ -23,7 +23,8 @@ os.environ["STREAMLIT_WATCHDOG_IGNORE_MODULES"] = "torch"
 ###############################################################################
 # Standard imports                                                            #
 ###############################################################################
-import logging, re
+import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -46,7 +47,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
+
 
 ###############################################################################
 # Utility functions                                                           #
@@ -55,54 +57,53 @@ def postprocess_recommendations(raw: str) -> str:
     """
     Return only the Market-context paragraph and the four recommendation bullets.
 
-    Steps
-    -----
-    1. Remove any lines starting with 'System:' or 'Human:'.
-    2. Discard 'INSUFFICIENT_CONTEXT' if present.
-    3. Keep everything from the first '### Market context' onward; drop the rest.
-    4. If “[END]” appears after Team:, truncate and discard it and anything following.
-    5. Strip trailing hashtags on the Team bullet.
-    6. Escape underscores so Streamlit Markdown does not interpret them as italics.
+    This function performs the following steps:
+      1. Remove any lines starting with 'System:' or 'Human:' (case‐insensitive).
+      2. Discard the literal 'INSUFFICIENT_CONTEXT' if present.
+      3. Keep everything from the first occurrence of '### Market context' onward;
+         drop any preceding text.
+      4. If '[END]' appears anywhere after '### Market context', truncate at that marker
+         and discard anything that follows.
+      5. On the Team bullet, strip trailing hashtags (e.g. '#Finance', '#Startups').
+      6. Escape underscores (_) so that Streamlit Markdown does not interpret them as italics.
 
-    Parameters
-    ----------
-    raw : str
-        Original text returned by the evaluator chain.
+    Args:
+        raw (str): Original multi‐line string returned by the evaluator chain.
 
-    Returns
-    -------
-    str
-        Cleaned text, ready to pass to st.markdown().
+    Returns:
+        str: Cleaned markdown‐safe string containing the market context and four bullets.
+             Returns an empty string if no '### Market context' marker is found.
     """
-    # Normalize newlines
-    txt = raw.replace("\r\n", "\n")
+    # Normalize newlines to '\n'
+    txt: str = raw.replace("\r\n", "\n")
 
-    # 1) Remove scaffolding lines
+    # 1) Remove lines starting with 'System:' or 'Human:' (case‐insensitive)
     txt = "\n".join(
-        line for line in txt.splitlines()
-        if not re.match(r"^\s*(System|Human)\s*:", line, flags=re.I)
+        line
+        for line in txt.splitlines()
+        if not re.match(r"^\s*(System|Human)\s*:", line, flags=re.IGNORECASE)
     )
 
-    # 2) Drop "INSUFFICIENT_CONTEXT"
+    # 2) Discard 'INSUFFICIENT_CONTEXT'
     txt = txt.replace("INSUFFICIENT_CONTEXT", "")
 
-    # 3) Keep from "### Market context" onward
+    # 3) Keep text from '### Market context' onward
     match = re.search(r"(?m)^###\s*Market\s+context", txt)
     if match:
         txt = txt[match.start():]
     else:
-        # If "### Market context" not found, return empty
+        # If the marker is not found, return empty
         return ""
 
-    # 4) Truncate at first "[END]" if present
-    end_index = txt.find("[END]")
+    # 4) Truncate at first '[END]', if present
+    end_index: int = txt.find("[END]")
     if end_index != -1:
         txt = txt[:end_index]
 
-    # 5) Strip trailing hashtags after Team:
+    # 5) Strip trailing hashtags from the Team bullet
     txt = re.sub(
-        r"(Team:\s*.+?)(?:\s*#.*)$",
-        r"\1",
+        r"(Team:\s*.+?)(?:\s*#.*)$",  # Capture 'Team: ...' up to the first hashtag
+        r"\1",  # Keep only the part before hashtags
         txt,
         flags=re.IGNORECASE | re.DOTALL,
     )
@@ -120,7 +121,11 @@ def postprocess_recommendations(raw: str) -> str:
 def get_eval_chain() -> Any:
     """
     Build and cache the evaluation chain (VC recommendations).
-    Returns a callable that expects {"question": <startup summary>}.
+
+    Returns:
+        Callable[[Dict[str, str]], Dict[str, Any]]:
+            A function that expects a dict with key 'question' (startup summary)
+            and returns a dict containing keys: 'result', 'context', 'snippet', 'docs'.
     """
     return build_chain(kind="eval", store="chroma")
 
@@ -129,7 +134,11 @@ def get_eval_chain() -> Any:
 def get_qa_chain() -> Any:
     """
     Build and cache the web QA chain (SerpApi + OpenAI).
-    Returns a callable that expects {"question": <user question>}.
+
+    Returns:
+        Callable[[Dict[str, str]], Dict[str, Any]]:
+            A function that expects a dict with key 'question' (user question)
+            and returns a dict containing keys: 'answer', 'context'.
     """
     return build_chain(kind="qa", store="chroma")
 
@@ -143,7 +152,7 @@ qa_chain: Any = get_qa_chain()
 st.title("🚀 Startup Evaluator & Web QA")
 
 # Create two tabs: one for startup evaluation, one for web-based QA
-tabs = st.tabs(["Startup Evaluator", "Web QA"])
+tabs: List[Any] = st.tabs(["Startup Evaluator", "Web QA"])
 
 # ── Tab 1: Startup Evaluator -----------------------------------------------
 with tabs[0]:
@@ -169,27 +178,29 @@ with tabs[0]:
             st.error("❗ Please enter a non-empty startup summary.")
         else:
             try:
-                # Invoke the evaluation chain
+                # Invoke the evaluation chain with {"question": summary}
                 output: Dict[str, Any] = eval_chain({"question": summary})
 
-                # 1) Three Similar Startup Examples
+                # 1) Display top-3 similar startup examples (from vector store)
                 st.subheader("📄 Three Similar Startup Examples")
                 retrieved: List[str] = output.get("docs", [])
                 if retrieved:
                     for idx, doc_text in enumerate(retrieved, start=1):
                         words: List[str] = doc_text.strip().split()
                         truncated: str = (
-                            " ".join(words[:200]) + " …" if len(words) > 200 else " ".join(words)
+                            " ".join(words[:200]) + " …"
+                            if len(words) > 200
+                            else " ".join(words)
                         )
                         with st.expander(f"Example {idx}", expanded=False):
                             st.write(truncated)
                 else:
                     st.info("No similar startup examples retrieved.")
 
-                # 2) VC Recommendations
+                # 2) Display VC recommendations
                 st.subheader("💡 VC Recommendations")
                 raw_recs: str = output.get("result", "")
-                cleaned_recs = postprocess_recommendations(raw_recs)
+                cleaned_recs: str = postprocess_recommendations(raw_recs)
                 if cleaned_recs:
                     st.markdown(cleaned_recs)
                 else:
@@ -218,10 +229,10 @@ with tabs[1]:
             st.error("❗ Please enter a non-empty question.")
         else:
             try:
-                # Invoke the QA chain
+                # Invoke the QA chain with {"question": question}
                 output: Dict[str, Any] = qa_chain({"question": question})
 
-                # Display the concatenated context from web snippets
+                # Display concatenated context from web snippets
                 st.subheader("🔍 Retrieved Web Snippets Context")
                 context: str = output.get("context", "")
                 if context:

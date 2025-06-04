@@ -88,7 +88,7 @@ def get_all_prompts() -> Dict[str, ChatPromptTemplate]:
     """Return a dictionary of all available prompt templates.
 
     Returns:
-        A dict mapping template names to ChatPromptTemplate instances:
+        Dict[str, ChatPromptTemplate]: Mapping of template names to ChatPromptTemplate instances:
             - "rag": RAG_WRAPPER
             - "eval": PROJECT_EVAL
             - "pitch": PITCH_DECK
