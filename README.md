@@ -79,8 +79,8 @@ git clone https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct           m
 streamlit run src/ui/app.py --server.address 127.0.0.1 --server.port 8501
 ```
 
-* **Startup Evaluator** tab → paste a startup idea to see market context + four bullets.
-* **Web QA** tab → ask any factual question (<= 2 min latency).
+* **Startup Evaluator** tab → paste a startup idea to see market context + four bullets (<= 5 s latency).
+* **Web QA** tab → ask any factual question (<= 20 ms latency).
 
 ### 3.2 REST API
 
