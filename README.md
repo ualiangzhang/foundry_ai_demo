@@ -85,7 +85,7 @@ streamlit run src/ui/app.py --server.address 127.0.0.1 --server.port 8501
 ### 3.2 REST API
 
 ```bash
-uvicorn api_server:app --host 0.0.0.0 --port 8000
+uvicorn src.api_server:app --host 0.0.0.0 --port 8000
 ```
 
 ```bash

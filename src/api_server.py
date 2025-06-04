@@ -11,7 +11,7 @@ Both endpoints return JSON and rely on the chain builders defined in src/rag/cha
 Run locally:
 ---------------
 # Activate your virtual environment first:
-uvicorn api_server:app --host 0.0.0.0 --port 8000
+uvicorn src.api_server:app --host 0.0.0.0 --port 8000
 
 Test endpoints:
 ---------------
