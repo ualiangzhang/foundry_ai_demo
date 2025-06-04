@@ -1,118 +1,104 @@
 # foundry_ai_demo
 
-This repository demonstrates an end-to-end pipeline for building a lightweight Retrieval-Augmented Generation (RAG) system combined with supervised fine-tuning (SFT) using LoRA adapters on LLaMA-3.
+**foundry_ai_demo** is a reference implementation of a lightweight Retrieval-Augmented-Generation (RAG) platform,
+fine-tuned with **LoRA** adapters on **Meta LLaMA-3 8B Instruct**.  
+The stack supports two core capabilities exposed via both a **Streamlit UI** and a **FastAPI** service:
+
+| Capability                                                                                             | Endpoint / Tab                                 | Model Flow                                                                                                                                                  |
+|--------------------------------------------------------------------------------------------------------|------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Startup Evaluator** – generate 4 VC-style recommendations (Market / Product / Business Model / Team) | `POST /evaluate`  │  **Startup Evaluator** tab | 1. Vector retrieval (top-3)<br>2. Google snippet (SerpAPI)<br>3. Market-context summarization (LoRA LLaMA-3)<br>4. Recommendation generation (LoRA LLaMA-3) |
+| **Web QA** – answer any factual question in ≤ 200 words                                                | `POST /qa`  │  **Web QA** tab                  | 1. Fetch top-3 Google snippets (SerpAPI)<br>2. Answer synthesis (OpenAI GPT-4o-mini)                                                                        |
 
 ---
 
-## Overview
+## 1 · Repository Map
 
-The system is designed to support venture capital (VC)-style evaluation for startup ideas. Given a startup summary, the system:
-
-1. Uses ChatGPT-4o to generate startup ideas and responses.
-2. Retrieves a numeric snippet using SerpAPI.
-3. Summarizes a market context and generates four concise VC recommendations (Market, Product, Business Model, Team).
-4. Provides a Streamlit UI to run the demo interactively.
-5. Supports SFT with LoRA via the LLaMA Factory.
-
----
-
-## Repository Structure
-
-- `data_raw/` – Contains original CSV datasets:
-  - `yc-startups.csv`: Download from Y Combinator website or external repositories.
-  - `shark.csv`: Available on Kaggle.
-  - `startup_desc.csv`: Generic startup description data.
-
-- `data_processed/` – Contains generated files:
-  - `rag_docs.jsonl`: Cleaned corpus used to build the vector database.
-  - `sft_train.jsonl`: Generated SFT examples using ChatGPT.
-
-- `scripts/` – Data processing utilities:
-  - `build_rag_docs.py`: Merge and clean CSVs into `rag_docs.jsonl`.
-  - `chunck_rag_docs.py`: Chunk long descriptions for fine-grained retrieval.
-  - `generate_sft_examples.py`: Use ChatGPT to generate SFT data with summary, market snippet, context, and VC recommendations.
-
-- `src/rag/` – Core logic:
-  - `model_loader.py`: Load LLaMA-3 and merge LoRA adapters.
-  - `retriever.py`: Construct vector store retrievers.
-  - `prompts.py`: Prompt templates for generation.
-  - `chains.py`: Composition logic for VC evaluation and pitch deck generation.
-
-- `src/ui/` – Streamlit front-end:
-  - `app.py`: UI interface to interact with the service.
-
-- `tests/` – Testing tools:
-  - `test_rag.py`: Basic test script to verify that LoRA inference and pipeline components run correctly.
+```text
+.
+├── scripts/                 # One-off data / SFT utilities
+│   ├── rag_docs_builder.py
+│   ├── chunk_rag_docs.py
+│   └── generate_sft_examples.py
+├── src/
+│   └── rag/
+│       ├── chains.py        # build_chain(kind=eval|rag|pitch|qa)
+│       ├── prompts.py
+│       ├── retriever.py
+│       └── model_loader.py
+│   └── ui/
+│       └── app.py           # Streamlit UI (two-tab)
+│   └── api_server.py        # FastAPI – /evaluate & /qa
+├── tests/                   # Unit & smoke tests (no external calls)
+│   ├── test_api.py
+│   ├── test_chains_basic.py
+│   └── test_rag.py
+├── models/
+│   ├── base/…               # LLaMA-3 weights (download manually)
+│   └── adapters/…           # LoRA checkpoints
+└── data_{raw,processed}/    # Corpora & generated files
+```
 
 ---
 
-## Setup Instructions
+## 2 · Quick Start
 
-1. Clone the repository:
+### 2.1 Clone & install
 
 ```bash
 git clone https://github.com/ualiangzhang/foundry_ai_demo.git
 cd foundry_ai_demo
-```
 
-2. Install Python dependencies:
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Download the required datasets manually and place them in `data_raw/`.
+### 2.2 Environment variables
 
-4. Set your OpenAI and SerpApi environment variables:
 ```bash
-# Replace <YOUR_OPENAI_KEY> and <YOUR_SERPAPI_KEY> with your actual keys
 export OPENAI_API_KEY="<YOUR_OPENAI_KEY>"
 export SERPAPI_API_KEY="<YOUR_SERPAPI_KEY>"
-source ~/.bashrc    # or `source ~/.bash_profile` or `source ~/.zshrc`, depending on which file you edited
 ```
-Verify that both variables are set:
+
+### 2.3 Download the LLaMA-3 8B Instruct base
+
 ```bash
-echo $OPENAI_API_KEY
-echo $SERPAPI_API_KEY
+huggingface-cli login          # must have been granted Meta license
+git lfs install
+git clone https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct           models/base/Meta-Llama-3-8B-Instruct
 ```
-You should see each key printed back. If either is blank, double-check that you added the export lines to the correct file and re-sourced it.
+
+*(Optional) Fine-tune with LoRA as described in § 4.*
 
 ---
 
-## Data Preparation
+## 3 · Running the Apps
 
-To build the corpus and prepare the training data:
+### 3.1 Streamlit dashboard
 
-- Run `scripts/build_rag_docs.py` to generate `rag_docs.jsonl`.
-- Run `scripts/generate_sft_examples.py` to generate `sft_train.jsonl` using ChatGPT.
+```bash
+streamlit run src/ui/app.py --server.address 127.0.0.1 --server.port 8501
+```
 
-The generated datasets will appear in `data_processed/`.
+* **Startup Evaluator** tab → paste a startup idea to see market context + four bullets.
+* **Web QA** tab → ask any factual question (<= 2 min latency).
+
+### 3.2 REST API
+
+```bash
+uvicorn api_server:app --host 0.0.0.0 --port 8000
+```
+
+```bash
+curl -X POST http://localhost:8000/evaluate      -H "Content-Type: application/json"      -d '{"summary":"AI-powered carbon accounting SaaS for SMEs."}'
+
+curl -X POST http://localhost:8000/qa      -H "Content-Type: application/json"      -d '{"question":"What is CRISPR gene editing?"}'
+```
 
 ---
 
-## Downloading LLaMA-3 8B Instruct Model
+## 4 · Fine-Tuning with LoRA (optional)
 
-To use this pipeline, you need to manually download the Meta LLaMA-3 8B Instruct model weights and tokenizer from [Hugging Face](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct). You must first request access via Meta and accept the license.
-
-Once approved:
-
-1. Log in with your Hugging Face CLI:
-   ```bash
-   huggingface-cli login
-   ```
-
-2. Download the model and tokenizer:
-   ```bash
-   git lfs install
-   git clone https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct models/base/Meta-Llama-3-8B-Instruct
-   ```
----
-
-## Model Fine-Tuning
-
-To fine-tune LLaMA-3 using LoRA, install [LLaMA Factory](https://github.com/hiyouga/LLaMA-Factory) in the `external/` directory:
+1. Install **LLaMA-Factory**:
 
 ```bash
 git clone https://github.com/hiyouga/LLaMA-Factory.git external/LLaMA-Factory
@@ -120,50 +106,69 @@ cd external/LLaMA-Factory
 pip install -e ".[torch,metrics]" --no-build-isolation
 ```
 
-Then run:
+2. Generate ~150 SFT examples:
+
+```bash
+python scripts/generate_sft_examples.py -n 150 --temperature 0.8
+```
+
+3. Train LoRA:
 
 ```bash
 llamafactory-cli train configs/llama3_lora_sft_2gpu_80gb.yaml
 ```
 
-LoRA adapters will be saved to `models/adapters/`.
+Adapters are saved under `models/adapters/llama3_lora/` and merged on-the-fly by `model_loader.py`.
 
 ---
 
-## Run the Demo UI
+## 5 · Testing
 
-Launch the Streamlit UI:
+All tests stub external calls, so they run < 1 s.
 
 ```bash
-streamlit run src/ui/app.py --server.address=127.0.0.1 --server.port=8501
+pytest -q
 ```
 
-Select the pipeline you want to test and input a startup summary. The interface will return market snippets, context, and VC recommendations or pitch deck bullets.
+```
+tests/test_api.py ........
+tests/test_chains_basic.py .
+tests/test_rag.py  (prints retrieval + LoRA output)
+```
 
 ---
 
-## Run the Test Script
+## 6 · Monitoring (Prometheus + Grafana)
 
-To validate the pipeline components and model quality:
+* `pip install prometheus-client`
+* Middleware in `api_server.py` (not shown here) exposes `/metrics`.
+* Example `prometheus.yml`:
 
-```bash
-python tests/test_rag.py
+```yaml
+scrape_configs:
+  - job_name: "foundry_api"
+    static_configs:
+      - targets: [ "localhost:8000" ]
 ```
 
-This script checks the inference pipeline end-to-end using a sample summary.
+Add Prometheus as a Grafana data-source and create panels for:
+
+```
+rate(app_http_requests_total[1m])
+histogram_quantile(0.95, sum(rate(app_request_latency_seconds_bucket[1m])) by (le))
+```
 
 ---
 
-## Future Work
+## 7 · Roadmap
 
-The following features are planned for future versions:
-
-- Add full QA pipeline with RAG over startup documents.
-- Incorporate feedback critic for self-improvement of generated examples.
-- Expand to multi-turn conversations and dynamic chain-of-thought generation.
-- Enhance retrieval quality with reranking.
-- Support multi-language market evaluation.
-- Integrate more advanced retrievers (e.g., hybrid, dense + sparse).
+| Area         | Planned Enhancements                              |
+|--------------|---------------------------------------------------|
+| Retrieval    | Hybrid dense + BM25 / LlamaIndex rerank           |
+| Generation   | Multi-turn reasoning; chain-of-thought disclosure |
+| Feedback     | Reinforcement via critic model + human RLHF       |
+| Multilingual | Non-English summaries & market data               |
+| Deployment   | Helm chart, GPU autoscaling, CI on PR             |
 
 ---
 

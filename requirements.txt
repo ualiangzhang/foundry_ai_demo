@@ -33,11 +33,14 @@ decorator==5.2.1
 Deprecated==1.2.18
 dill==0.3.8
 distro==1.9.0
+dnspython==2.7.0
 docstring_parser==0.16
 duckduckgo_search==8.0.2
 durationpy==0.10
 einops==0.8.1
+email_validator==2.2.0
 fastapi==0.115.9
+fastapi-cli==0.0.7
 ffmpy==0.5.0
 filelock==3.18.0
 fire==0.7.0
@@ -68,6 +71,8 @@ hyperframe==6.1.0
 idna==3.10
 importlib_metadata==8.6.1
 importlib_resources==6.5.2
+iniconfig==2.1.0
+itsdangerous==2.2.0
 jieba==0.42.1
 Jinja2==3.1.6
 jiter==0.10.0
@@ -128,6 +133,7 @@ pandas==2.2.3
 peft==0.15.2
 pillow==11.2.1
 platformdirs==4.3.8
+pluggy==1.6.0
 pooch==1.8.2
 portalocker==2.10.1
 posthog==4.2.0
@@ -140,6 +146,7 @@ pyasn1==0.6.1
 pyasn1_modules==0.4.2
 pycparser==2.22
 pydantic==2.10.6
+pydantic-extra-types==2.10.5
 pydantic-settings==2.9.1
 pydantic_core==2.27.2
 pydeck==0.9.1
@@ -148,6 +155,7 @@ Pygments==2.19.1
 pyparsing==3.2.3
 PyPika==0.48.9
 pyproject_hooks==1.2.0
+pytest==8.4.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.1.0
 python-multipart==0.0.20
@@ -161,6 +169,7 @@ requests==2.32.3
 requests-oauthlib==2.0.0
 requests-toolbelt==1.0.0
 rich==14.0.0
+rich-toolkit==0.14.7
 rouge-chinese==1.0.3
 rpds-py==0.25.1
 rsa==4.9.1
@@ -172,6 +181,7 @@ scipy==1.15.3
 semantic-version==2.10.0
 sentence-transformers==4.1.0
 sentencepiece==0.2.0
+serpapi==0.1.5
 shellingham==1.5.4
 shtab==1.7.2
 six==1.17.0
@@ -206,6 +216,7 @@ typing-inspection==0.4.1
 typing_extensions==4.13.2
 tyro==0.8.14
 tzdata==2025.2
+ujson==5.10.0
 urllib3==2.4.0
 uvicorn==0.34.2
 uvloop==0.21.0
@@ -218,6 +229,3 @@ xxhash==3.5.0
 yarl==1.20.0
 zipp==3.22.0
 zstandard==0.23.0
-
-serpapi~=0.1.5
-setuptools~=68.2.0

@@ -69,7 +69,7 @@ OUT: pathlib.Path = pathlib.Path("data_processed")
 OUT.mkdir(exist_ok=True, parents=True)
 
 try:
-    writer = open(OUT / "rag_docs.jsonl", "w", encoding="utf-8")
+    writer = open(OUT / "rag_docs.jsonl", "w", encoding="utf-8")  # type: ignore[name-defined]
 except (OSError, IOError) as e:
     logger.error(f"Failed to open output file for writing: {e}")
     raise
@@ -79,10 +79,10 @@ def norm(txt: str) -> str:
     """Normalize whitespace in text by collapsing consecutive whitespace into single spaces.
 
     Args:
-        txt: Original text string.
+        txt (str): Original text string.
 
     Returns:
-        A cleaned string with trimmed leading/trailing whitespace and no duplicate spaces.
+        str: A cleaned string with trimmed leading/trailing whitespace and no duplicate spaces.
     """
     return re.sub(r"\s+", " ", txt).strip()
 
@@ -91,14 +91,14 @@ def dump(text: str, source: str, title: str) -> None:
     """Write a record to the JSONL file if the normalized text length is at least 200 characters.
 
     Args:
-        text: Raw text describing a startup or pitch.
-        source: Tag indicating the source of the text (e.g., "yc_company", "generic_desc", "shark_pitch").
-        title: Title or name associated with the text entry.
+        text (str): Raw text describing a startup or pitch.
+        source (str): Tag indicating the source of the text (e.g., "yc_company", "generic_desc", "shark_pitch").
+        title (str): Title or name associated with the text entry.
 
     Raises:
         ValueError: If the writer is not initialized or if writing to file fails.
     """
-    if writer is None:
+    if writer is None:  # type: ignore[name-defined]
         raise ValueError("Output writer is not initialized.")
 
     normalized_text: str = norm(text)
@@ -127,10 +127,11 @@ def detect_keys(fieldnames: List[str]) -> Tuple[Optional[str], Optional[str]]:
       - A desc_key that contains "description", equals "desc", or contains "idea" or "summary".
 
     Args:
-        fieldnames: List of column names (headers) from a CSV.
+        fieldnames (List[str]): List of column names (headers) from a CSV.
 
     Returns:
-        A tuple (title_key, desc_key). Each element is either the matched column name or None if not found.
+        Tuple[Optional[str], Optional[str]]: A tuple (title_key, desc_key). Each element is
+            either the matched column name or None if not found.
     """
     title_key: Optional[str] = None
     desc_key: Optional[str] = None
@@ -237,7 +238,8 @@ if shark_folder.exists():
                 amt_key: Optional[str] = next((k for k in fieldnames if "ask" in k.lower() or "amount" in k.lower()),
                                               None)
                 eq_key: Optional[str] = next(
-                    (k for k in fieldnames if "exchange" in k.lower() or "equity" in k.lower()), None)
+                    (k for k in fieldnames if "exchange" in k.lower() or "equity" in k.lower()), None
+                )
 
                 if title_key and desc_key:
                     logger.info(f"[Shark] Using '{st_csv.name}' with description='{desc_key}', title='{title_key}'")
@@ -296,7 +298,7 @@ else:
 
 # Close the output file handle
 try:
-    writer.close()
+    writer.close()  # type: ignore[name-defined]
     logger.info(f"✅  Saved {OUT / 'rag_docs.jsonl'}")
 except (OSError, IOError) as e:
     logger.error(f"Failed to close the writer properly: {e}")

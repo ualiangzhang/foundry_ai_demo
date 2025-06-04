@@ -3,6 +3,7 @@
 tests/test_rag.py
 
 Demonstrates the LoRA-fine-tuned LLaMA-3 model on a single query.
+
 Steps:
   1. Build a RetrievalQA chain to obtain a shared retriever.
   2. Build the eval callable (four recommendations) using LoRA weights only.
@@ -23,7 +24,7 @@ from langchain.schema import BaseRetriever
 from langchain_community.llms import HuggingFacePipeline
 
 # ── Add project root to PYTHONPATH ───────────────────────────────────────────
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # ── Local imports ────────────────────────────────────────────────────────────
@@ -36,34 +37,33 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def _extract_prompt_and_response(
-    llm_pipeline: HuggingFacePipeline,
-    summary: str,
-    context: str,
+        llm_pipeline: HuggingFacePipeline,
+        summary: str,
+        context: str,
 ) -> Tuple[str, str]:
-    """
-    Builds the PROJECT_EVAL prompt and invokes the LLM pipeline.
+    """Builds the PROJECT_EVAL prompt and invokes the LLM pipeline.
 
     Args:
-        llm_pipeline: A HuggingFacePipeline instance wrapping the LoRA model.
-        summary: The startup idea summary to include as "question".
-        context: The market context to include as "context".
+        llm_pipeline (HuggingFacePipeline): A pipeline wrapping the LoRA model.
+        summary (str): The startup idea summary to include as "question".
+        context (str): The market context to include as "context".
 
     Returns:
-        A tuple containing:
-            - The full text prompt sent to the model as a string.
-            - The model's raw textual output as a string.
+        Tuple[str, str]:
+            - The full text prompt sent to the model.
+            - The raw textual output produced by the model.
     """
     try:
         # Format the ChatPromptValue for PROJECT_EVAL
         prompt_value = PROJECT_EVAL.format_prompt(question=summary, context=context)
-        # Convert to a single string for the pipeline
-        prompt_str = prompt_value.to_string()
+        # Convert to a single-string prompt
+        prompt_str: str = prompt_value.to_string()
         # Invoke the LLM pipeline and capture raw output
-        raw_output = llm_pipeline.invoke(prompt_str).strip()
+        raw_output: str = llm_pipeline.invoke(prompt_str).strip()
         return prompt_str, raw_output
     except Exception as e:
         logger.error(f"Exception during prompt construction or LLM invocation: {e}")
@@ -71,11 +71,15 @@ def _extract_prompt_and_response(
 
 
 def main() -> None:
-    """
-    1. Instantiate RetrievalQA with LoRA chain to obtain shared retriever.
+    """Run a demonstration of RetrievalQA with a LoRA-fine-tuned LLaMA-3 model.
+
+    1. Instantiate RetrievalQA with LoRA-based chain to obtain the retriever.
     2. Instantiate the eval callable (LoRA-based) to produce four recommendations.
-    3. Log the top-3 retrieved documents from the retriever.
-    4. Generate and log the LoRA prompt and the model’s output.
+    3. Retrieve and log the top-3 documents for a test query.
+    4. Load the LoRA model separately and log the prompt & output for evaluation.
+
+    Returns:
+        None
     """
     # Define a test query focused on VR fitness
     query: str = (
@@ -86,7 +90,7 @@ def main() -> None:
     # Step 1: Build LoRA RetrievalQA chain to extract retriever only
     try:
         lora_rag: RetrievalQA = build_chain(kind="rag", store="chroma")
-        retriever: BaseRetriever = lora_rag.retriever
+        retriever: BaseRetriever = lora_rag.retriever  # type: ignore[attr-defined]
         logger.info("Successfully instantiated RetrievalQA chain with LoRA.")
     except Exception as e:
         logger.error(f"Failed to build RetrievalQA chain: {e}")
@@ -105,7 +109,7 @@ def main() -> None:
 
     # Step 3: Retrieve and log top-3 documents
     try:
-        top_docs: List[Any] = retriever.get_relevant_documents(query)
+        top_docs: List[Any] = retriever.get_relevant_documents(query)  # type: ignore[attr-defined]
         logger.info("STEP 1 · Top-3 Retrieved Documents")
         for idx, doc in enumerate(top_docs[:3], start=1):
             # Flatten newlines for logging
@@ -121,11 +125,10 @@ def main() -> None:
         context_text: str = eval_result.get("context", "")
         snippet_text: str = eval_result.get("snippet", "")
 
-        # Build the LoRA input prompt and capture the raw model output
         # Load LoRA model and tokenizer once for prompt extraction
         try:
-            model, tokenizer = load_llama(use_lora=True)
-            llm_pipeline = HuggingFacePipeline(
+            model, tokenizer = load_llama(use_lora=True)  # type: ignore[arg-type]
+            llm_pipeline: HuggingFacePipeline = HuggingFacePipeline(
                 pipeline=transformers.pipeline(
                     "text-generation",
                     model=model,
