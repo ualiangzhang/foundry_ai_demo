@@ -132,25 +132,38 @@ pytest tests/ -q
 
 ---
 
-## 6 · Monitoring (Prometheus + Grafana)
+## 6 · Monitoring (Prometheus + Grafana) (To-DO)
 
 * `pip install prometheus-client`
-* Middleware in `api_server.py` (not shown here) exposes `/metrics`.
-* Example `prometheus.yml`:
 
-```yaml
-scrape_configs:
-  - job_name: "foundry_api"
-    static_configs:
-      - targets: [ "localhost:8000" ]
-```
+[//]: # (* Middleware in `api_server.py` &#40;not shown here&#41; exposes `/metrics`.)
 
-Add Prometheus as a Grafana data-source and create panels for:
+[//]: # (* Example `prometheus.yml`:)
 
-```
-rate(app_http_requests_total[1m])
-histogram_quantile(0.95, sum(rate(app_request_latency_seconds_bucket[1m])) by (le))
-```
+[//]: # ()
+[//]: # (```yaml)
+
+[//]: # (scrape_configs:)
+
+[//]: # (  - job_name: "foundry_api")
+
+[//]: # (    static_configs:)
+
+[//]: # (      - targets: [ "localhost:8000" ])
+
+[//]: # (```)
+
+[//]: # ()
+[//]: # (Add Prometheus as a Grafana data-source and create panels for:)
+
+[//]: # ()
+[//]: # (```)
+
+[//]: # (rate&#40;app_http_requests_total[1m]&#41;)
+
+[//]: # (histogram_quantile&#40;0.95, sum&#40;rate&#40;app_request_latency_seconds_bucket[1m]&#41;&#41; by &#40;le&#41;&#41;)
+
+[//]: # (```)
 
 ---
 
