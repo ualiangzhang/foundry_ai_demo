@@ -1,14 +1,16 @@
 import os
 import re
 import json
+import streamlit as st
 import openai
 
+# —— 1. Configure OpenAI API Key —— #
 openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY_GOES_HERE")
 
 
 def ask_gpt_for_missing(jd_text: str, missing_fields: list) -> dict:
     """
-    Ask GPT to fill in any missing fields and extract a list of technical skills.
+    Ask GPT-3.5-turbo to fill in any missing fields and extract a list of technical skills.
     Returns a dict with keys = missing_fields + ["skills"].
     """
     prompt = (
@@ -29,7 +31,7 @@ def ask_gpt_for_missing(jd_text: str, missing_fields: list) -> dict:
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "You are a helpful assistant who extracts structured fields from a job description."},
-            {"role": "user",   "content": prompt}
+            {"role": "user", "content": prompt}
         ],
         temperature=0
     )
@@ -51,7 +53,7 @@ def extract_from_jd(jd_text: str) -> dict:
        - clearance_required       (True/False)
        - full_time                (True/False)
        - skills                   (initial pass via regex)
-    2) If any of the above fields is missing, call GPT to fill them.
+    2) If any of these fields is missing, call GPT to fill them.
     3) Return a dict with all extracted fields + “conclusion” string.
     """
 
@@ -68,7 +70,7 @@ def extract_from_jd(jd_text: str) -> dict:
 
     text = jd_text
 
-    # 1) SALARY RANGE
+    # — 1) SALARY RANGE ——
     salary_patterns = [
         re.compile(r"\$\s*([\d,]+)[Kk]?/?yr?\s*[-–]\s*\$\s*([\d,]+)[Kk]?/?yr?", re.IGNORECASE),
         re.compile(r"USD\s*([\d,]+)[Kk]?\s*[-–]\s*([\d,]+)[Kk]?", re.IGNORECASE),
@@ -78,11 +80,13 @@ def extract_from_jd(jd_text: str) -> dict:
         m = pat.search(text)
         if m:
             low_raw, high_raw = m.groups()
+
             def to_int(x):
                 x = x.replace(",", "")
                 if x.lower().endswith("k"):
                     return int(float(x[:-1]) * 1000)
                 return int(x)
+
             try:
                 info["salary_low"] = to_int(low_raw)
                 info["salary_high"] = to_int(high_raw)
@@ -90,7 +94,7 @@ def extract_from_jd(jd_text: str) -> dict:
             except ValueError:
                 pass
 
-    # 2) EMPLOYEE COUNT
+    # — 2) EMPLOYEE COUNT ——
     emp_pat_range = re.compile(r"(\d+)\s*[-–]\s*(\d+)\s+employees", re.IGNORECASE)
     emp_pat_single = re.compile(r"(\d+)\s+employees", re.IGNORECASE)
     m = emp_pat_range.search(text)
@@ -101,25 +105,25 @@ def extract_from_jd(jd_text: str) -> dict:
         if m2:
             info["employee_count_max"] = int(m2.group(1))
 
-    # 3) STATE ABBREVIATION (US)
+    # — 3) STATE ABBREVIATION ——
     state_pat = re.compile(r"\b(?:in\s+)?[A-Za-z .]+,\s*([A-Z]{2})\b")
     m = state_pat.search(text)
     if m:
         info["state_abbrev"] = m.group(1)
 
-    # 4) TRAVEL PERCENTAGE
+    # — 4) TRAVEL PERCENTAGE ——
     travel_pat = re.compile(r"(\d{1,3})\s*%\s*(?:travel|Travel)", re.IGNORECASE)
     m = travel_pat.search(text)
     if m:
         info["travel_pct"] = int(m.group(1))
 
-    # 5) SECURITY CLEARANCE?
+    # — 5) SECURITY CLEARANCE? ——
     if re.search(r"security clearance|requires clearance|Top Secret|Secret clearance|public trust", text, re.IGNORECASE):
         info["clearance_required"] = True
     else:
         info["clearance_required"] = False
 
-    # 6) FULL-TIME?
+    # — 6) FULL-TIME? ——
     if re.search(r"\bfull[- ]?time\b", text, re.IGNORECASE):
         info["full_time"] = True
     elif re.search(r"\bcontract\b|\bintern\b|\bpart[- ]?time\b", text, re.IGNORECASE):
@@ -127,18 +131,18 @@ def extract_from_jd(jd_text: str) -> dict:
     else:
         info["full_time"] = None
 
-    # 7) SKILLS (expanded list of common data-science & related technologies)
+    # — 7) SKILLS (expanded list of data-science & related technologies) ——
     possible_tech = [
         # Programming Languages
         "Python", "R", "Java", "Scala", "C\\+\\+", "C#", "Go", "Julia", "Ruby",
         "JavaScript", "TypeScript", "SQL",
 
         # Data Manipulation / Analysis
-        "Pandas", "NumPy", "SciPy", "dplyr", "tidyr", "data\\.table", "data\\.table",
+        "Pandas", "NumPy", "SciPy", "dplyr", "tidyr", "data\\.table",
 
         # Machine Learning Frameworks
         "scikit[- ]?learn", "TensorFlow", "PyTorch", "Keras", "XGBoost", "LightGBM",
-        "CatBoost", "H2O", "MLflow", "PySpark", "Spark MLlib", "RapidMiner", "WEKA",
+        "CatBoost", "H2O", "MLflow", "PySpark", "Spark MLlib",
 
         # Deep Learning & NLP
         "Transformers", "HuggingFace", "BERT", "GPT-\\d", "OpenNMT", "spaCy", "NLTK",
@@ -154,7 +158,6 @@ def extract_from_jd(jd_text: str) -> dict:
 
         # Data Engineering / Orchestration
         "Airflow", "Apache Airflow", "Luigi", "Prefect", "Dagster", "Talend", "NiFi",
-        "Kafka Streams", "StreamSets", "NiFi", "Informatica",
 
         # Containerization / Deployment / CI-CD
         "Docker", "Kubernetes", "Helm", "Kubeflow", "Argo", "Jenkins", "CircleCI", "GitHub Actions",
@@ -169,38 +172,35 @@ def extract_from_jd(jd_text: str) -> dict:
         "Vertica", "Greenplum", "SAP HANA", "Exasol",
 
         # Workflow / Version Control / Misc
-        "Git", "SVN", "Mercurial", "JIRA", "Confluence", "Slack", "Confluence", "Jupyter Notebook",
-        "JupyterLab", "Zeppelin", "VS Code", "PyCharm", "RStudio"
+        "Git", "SVN", "Mercurial", "JIRA", "Confluence", "Slack", "Jupyter Notebook", "JupyterLab",
+        "Zeppelin", "VS Code", "PyCharm", "RStudio"
     ]
 
     skills_found = set()
     for tech in possible_tech:
-        # Use word boundaries, or exact matches for multi-word names
         pattern = rf"\b{tech}\b"
         if re.search(pattern, text, re.IGNORECASE):
-            # Normalize capitalization to the pattern itself (remove regex escapes)
             clean_tech = tech.replace("\\", "")
             skills_found.add(clean_tech)
 
     info["skills"] = sorted(skills_found)
 
-    # 8) Identify which fields are still missing
+    # — 8) Identify missing fields ——
     missing = []
     for field in ["salary_low", "salary_high", "employee_count_max", "state_abbrev", "travel_pct", "full_time"]:
         if info[field] is None:
             missing.append(field)
-
     if not info["skills"]:
         missing.append("skills")
 
-    # 9) If anything is missing, ask GPT to fill in those fields + skills
+    # — 9) GPT fallback if anything is missing ——
     if missing:
         gpt_result = ask_gpt_for_missing(jd_text, missing)
         for key in missing:
             if key in gpt_result and gpt_result[key] is not None:
                 info[key] = gpt_result[key]
 
-    # 10) Build a “conclusion” string summarizing what we found
+    # — 10) Build conclusion string ——
     conclusions = []
     if info["salary_low"] is not None and info["salary_high"] is not None:
         conclusions.append(f"Salary range: ${info['salary_low']:,} – ${info['salary_high']:,}/yr")
@@ -226,55 +226,52 @@ def extract_from_jd(jd_text: str) -> dict:
     return info
 
 
-# —————————————————————————————————————————————————————————————————————————————
-# Example usage
-# —————————————————————————————————————————————————————————————————————————————
-if __name__ == "__main__":
-    jd_text = """
-    Software Engineer, Data Platform
-    Bellevue, WA · 2 hours ago · 11 people clicked apply
-    Promoted by hirer · Responses managed off LinkedIn
+# —— 3. Streamlit interface —— #
+st.set_page_config(page_title="JD Extractor", page_icon="📝", layout="centered")
+st.title("📝 Job Description Field Extractor")
 
-    $147K/yr - $221K/yr
-    Matches your job preferences, minimum pay preference is 120000.
-
-    On-site
-    Matches your job preferences, workplace type is On-site.
-
-    Full-time
-    Matches your job preferences, job type is Full-time.
-
-    Qualifications
-
-    Bachelor’s or Master’s degree with 3+ years of relevant experience.
-    Proven expertise in deploying open-source solutions such as Kubernetes, Kafka, Hadoop, Flink, Spark, Presto, and Trino.
-    Familiarity with cloud provider solutions, including AWS and GCP.
-    Previous experience in data platform construction is essential.
-    Open-source contributions are a plus.
-
-    Required Skills
-
-    Expertise in data engineering and platform development.
-    Strong problem-solving skills and ability to work collaboratively.
-
-    Preferred Skills
-
-    Experience with large-scale data processing.
-    Knowledge of data governance and security best practices.
-
-    The US base salary range for this full-time position is listed below.
-    Annual Base Pay Range: $147,000—$221,000 USD.
-
-    Jobright.ai company logo
-    Jobright.ai
-    2–10 employees
+st.markdown(
     """
+    Paste a Job Description (JD) into the text box below.
+    The app will attempt to extract:
+    - Salary range (USD/year)
+    - Company size (max employees)
+    - Location (US state abbreviation)
+    - Travel percentage
+    - Whether Security clearance is required
+    - Whether it is a Full-time position
+    - List of all mentioned data-science or related technical skills
 
-    result = extract_from_jd(jd_text)
+    For any fields that cannot be determined via regex, the app will call ChatGPT to fill in the missing pieces.
+    """
+)
 
-    print("=== Extracted Information ===")
-    for key, val in result.items():
-        if key != "skills":
-            print(f"{key}: {val}")
-    print("skills:", result["skills"])
-    print("\nConclusion:\n", result["conclusion"])
+jd_input = st.text_area("Paste the full JD text here:", height=350)
+
+if st.button("Extract Fields"):
+    if not jd_input.strip():
+        st.warning("⚠️ Please paste the JD text first.")
+    else:
+        with st.spinner("Extracting fields…"):
+            result = extract_from_jd(jd_input)
+
+        # Display results in a clean format
+        st.subheader("Extracted Information")
+        st.write(f"- **Salary Low**: {result['salary_low']}")
+        st.write(f"- **Salary High**: {result['salary_high']}")
+        st.write(f"- **Max Employees**: {result['employee_count_max']}")
+        st.write(f"- **State (Abbrev.)**: {result['state_abbrev']}")
+        st.write(f"- **Travel Percentage**: {result['travel_pct']}")
+        st.write(f"- **Requires Security Clearance**: {result['clearance_required']}")
+        st.write(f"- **Full-Time**: {result['full_time']}")
+
+        st.write()
+        st.subheader("Extracted Skills")
+        if result["skills"]:
+            st.write(", ".join(result["skills"]))
+        else:
+            st.write("No skills detected.")
+
+        st.write()
+        st.subheader("Conclusion")
+        st.write(result["conclusion"])
