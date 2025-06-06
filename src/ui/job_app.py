@@ -1,24 +1,22 @@
-# app.py
-
 import os
 import streamlit as st
 import openai
 
 # —— 1. Configure OpenAI API Key —— #
-# It’s recommended to set OPENAI_API_KEY in your environment.
+# Make sure OPENAI_API_KEY is set in your environment.
 openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY_GOES_HERE")
 
 
 # —— 2. Define a function that asks OpenAI whether to filter the JD —— #
 def needs_filtering(jd_text: str) -> (bool, list):
     """
-    Given the full JD text, call OpenAI to check if the JD meets any of:
-      1) Requires on-site in California with < $150k salary
+    Given a full JD text, call OpenAI to check if the JD meets any of:
+      1) On-site in California AND salary < $150k
       2) Requires Security clearance
       3) Travel > 20%
       4) Company size < 50 employees
       5) Not full-time (contract, intern, part-time, etc.)
-    Returns (filter_flag, reasons_list). If filter_flag=True, reasons_list contains the matching criteria numbers.
+    Returns (filter_flag, reasons_list).
     """
     system_prompt = (
         "You are a recruiting assistant. The user will provide the entire Job Description (JD). "
@@ -39,7 +37,8 @@ def needs_filtering(jd_text: str) -> (bool, list):
         "{\"filter\":\"no\",\"reasons\":[]}\n"
     )
 
-    response = openai.ChatCompletion.create(
+    # —— UPDATED: use the new `openai.chat.completions.create` endpoint —— #
+    response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": system_prompt},
@@ -47,9 +46,9 @@ def needs_filtering(jd_text: str) -> (bool, list):
         ],
         temperature=0
     )
+
     reply = response.choices[0].message["content"].strip()
 
-    # Try to parse JSON
     try:
         import json
         result = json.loads(reply)
@@ -65,7 +64,7 @@ st.title("🔍 JD Quick Filter")
 
 st.markdown(
     """
-    Paste the full Job Description (JD) text below, then click “Check Filter” to have the app:
+    Paste the full Job Description (JD) text below, then click “Check Filter”:
 
     1. Exclude any JD that requires **on-site** work in **California** with salary **< $150k/year**  
     2. Exclude any JD that requires **Security clearance**  
@@ -102,7 +101,7 @@ if st.button("Check Filter"):
 # —— 4. Instructions to run locally —— #
 # 1. Install dependencies:
 #    pip install streamlit openai
-# 2. Set OPENAI_API_KEY in your environment:
+# 2. Make sure OPENAI_API_KEY is set:
 #    export OPENAI_API_KEY="sk-xxxxxx"
 # 3. Run:
 #    streamlit run app.py
