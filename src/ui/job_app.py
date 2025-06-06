@@ -1,3 +1,5 @@
+# app.py
+
 import os
 import streamlit as st
 import openai
@@ -37,9 +39,9 @@ def needs_filtering(jd_text: str) -> (bool, list):
         "{\"filter\":\"no\",\"reasons\":[]}\n"
     )
 
-    # —— UPDATED: use the new `openai.chat.completions.create` endpoint —— #
+    # —— Use the new openai.chat.completions.create endpoint —— #
     response = openai.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": jd_text}
@@ -47,7 +49,8 @@ def needs_filtering(jd_text: str) -> (bool, list):
         temperature=0
     )
 
-    reply = response.choices[0].message["content"].strip()
+    # —— FIX: access .message.content instead of indexing into message —— #
+    reply = response.choices[0].message.content.strip()
 
     try:
         import json
